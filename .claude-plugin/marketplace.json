@@ -1,0 +1,13 @@
+{
+  "name": "devnull-claude",
+  "description": "/dev/null inside Claude Code",
+  "owner": {
+    "name": "Andrew Hodson"
+  },
+  "plugins": [
+    {
+      "name": "devnull",
+      "source": "./"
+    }
+  ]
+}
