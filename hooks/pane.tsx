@@ -3,7 +3,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderInput } from 'claude-code'
 
 import type { CommitRow, Live } from '../types'
-import { NOTE_KINDS, ago, avatarSvg, preview, underlineSvg } from './devnull'
+import { NOTE_KINDS, TAIL_HEIGHT, ago, avatarSvg, preview, tailSvg, underlineSvg } from './devnull'
 import { aim, react, refresh, send, show } from './feed'
 import { startLogin, syncLogin } from './login'
 import { heatmapSvg } from './streaks'
@@ -132,8 +132,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
       <Box key={`c-${depth}-${c.id}`} flexDirection="row" alignItems="stretch" columnGap={1} paddingTop={1} paddingBottom={depth === 0 ? 1 : 0}>
         <Box flexDirection="column" alignItems="center">
           {ring(c.lane, c.username, size)}
-          {/* The lane: a left-border bar that stretches to the row's height, like the web's rail. */}
-          <Box flexGrow={1} width={1} borderStyle="quote" borderColor={c.lane} />
+          {/* The lane fading out under the avatar: the desktop draws any border as a full outline, so no stretched bar. */}
+          {Svg && <Svg source={tailSvg(c.lane, size)} alt="Lane" width={size} height={TAIL_HEIGHT} />}
         </Box>
         <Box flexDirection="column" flexGrow={1} flexShrink={1}>
           <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
