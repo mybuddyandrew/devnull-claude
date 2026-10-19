@@ -34,13 +34,13 @@ test('reads ssh-keygen output and the callback link', async () => {
 })
 
 test('maps API commits and notifications to rows', async () => {
-  const row = toCommitRow({ id: '01abcdef99', body: 'hello', stars_count: 2, author: { username: 'nuno', lane: '#ff00aa' } })
-  expect(row).toMatchObject({ hash: '01abcde', username: 'nuno', lane: '#ff00aa', stars: 2, replies: 0 })
+  const row = toCommitRow({ id: '01abcdef99', body: 'hello', stars_count: 2, author: { username: 'kim', lane: '#ff00aa' } })
+  expect(row).toMatchObject({ hash: '01abcde', username: 'kim', lane: '#ff00aa', stars: 2, replies: 0 })
   expect(toCommitRow({ id: '1', author: { lane: 'blue' } }).lane).toBe(RAIL)
   expect(laneColor(3)).toBe('#3bc9db')
   expect(laneColor('#C70A0A')).toBe('#c70a0a')
-  const thread = toCommitRow({ id: 'p', author: { lane: 0 }, reply_preview: { data: [{ id: 'r', starred: false, stars_count: 0, author: { username: 'world' } }] } })
-  expect(thread.replyPreview[0]?.username).toBe('world')
+  const thread = toCommitRow({ id: 'p', author: { lane: 0 }, reply_preview: { data: [{ id: 'r', starred: false, stars_count: 0, author: { username: 'sam' } }] } })
+  expect(thread.replyPreview[0]?.username).toBe('sam')
   const starred = patchCommit([thread], 'r', r => ({ ...r, isStarred: true, stars: 1 }))
   expect(starred[0]?.replyPreview[0]).toMatchObject({ isStarred: true, stars: 1 })
   expect(avatarSvg('#51cf66', 36, undefined, '<x>')).toContain('&lt;')

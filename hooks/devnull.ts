@@ -190,9 +190,11 @@ export const ago = (iso: string | undefined, nowMs: number): string => {
 
 // How a notification reads after the actor's name, and the glyph beside it.
 export const NOTE_KINDS: Record<string, { verb: string; glyph: string }> = {
-  reply: { verb: 'replied to your commit', glyph: '↩' },
-  quote: { verb: 'quoted your commit', glyph: '❝' },
-  star: { verb: 'starred your commit', glyph: '★' },
-  mention: { verb: 'mentioned you', glyph: '@' },
-  follow: { verb: 'followed you', glyph: '+' },
+  replied: { verb: 'replied to your commit', glyph: '↩' },
+  quoted: { verb: 'quoted your commit', glyph: '❝' },
+  starred: { verb: 'starred your commit', glyph: '★' },
+  mentioned: { verb: 'mentioned you', glyph: '@' },
+  followed: { verb: 'followed you', glyph: '+' },
+  approved: { verb: 'approved your commit', glyph: '✓' },
+  rejected: { verb: 'held back your commit', glyph: '!' },
 }
