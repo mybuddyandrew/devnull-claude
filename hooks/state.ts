@@ -29,8 +29,8 @@ export const INITIAL_PEOPLE = [] as string[]
 export const INITIAL_PULL = 0
 export const INITIAL_WINDOW_START = 0
 // The pane draws at most this many rows of a list (about 4 KB each), sliding by SLIDE_ROWS as you scroll.
-export const MAX_DRAWN = 25
-export const SLIDE_ROWS = 10
+export const MAX_DRAWN = 15
+export const SLIDE_ROWS = 6
 // Loaded rows kept in memory; the oldest beyond this are dropped.
 export const MAX_LOADED = 300
 // Wheel ticks up past the top that refresh the pane, and how near the end a scroll loads the next page.

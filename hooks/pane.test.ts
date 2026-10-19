@@ -41,15 +41,15 @@ test('however many commits are loaded, the pane draws a bounded window', async (
   const tree = JSON.stringify(await ui.drawn())
   expect(tree.length).toBeLessThan(150_000)
   expect(await ui.find({ key: `star-0-${data[0]!.id}` })).toBeDefined()
-  expect(await ui.find({ key: `star-0-${data[24]!.id}` })).toBeDefined()
-  expect(await ui.find({ key: `star-0-${data[25]!.id}` })).toBeUndefined()
+  expect(await ui.find({ key: `star-0-${data[14]!.id}` })).toBeDefined()
+  expect(await ui.find({ key: `star-0-${data[15]!.id}` })).toBeUndefined()
   expect(await ui.find({ key: 'more' })).toBeDefined()
   expect(await ui.find({ key: 'newer' })).toBeUndefined()
 
   // Load more slides the window down; the newer button appears to slide back.
   await ui.press({ key: 'more' })
   expect(await ui.find({ key: `star-0-${data[0]!.id}` })).toBeUndefined()
-  expect(await ui.find({ key: `star-0-${data[34]!.id}` })).toBeDefined()
+  expect(await ui.find({ key: `star-0-${data[20]!.id}` })).toBeDefined()
   expect(await ui.find({ key: 'newer' })).toBeDefined()
   await ui.press({ key: 'newer' })
   expect(await ui.find({ key: `star-0-${data[0]!.id}` })).toBeDefined()

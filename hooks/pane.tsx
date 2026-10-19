@@ -135,11 +135,11 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     )
 
     const commit = (c: CommitRow, depth: number): ReturnType<typeof Box> => {
-      const size = depth === 0 ? 36 : 28
+      const size = depth === 0 ? 44 : 32
       const isOpen = open.includes(c.id)
       const body = preview(c.body)
       return (
-      <Box key={`c-${depth}-${c.id}`} flexDirection="row" alignItems="stretch" columnGap={1} paddingTop={1} paddingBottom={depth === 0 ? 1 : 0}>
+      <Box key={`c-${depth}-${c.id}`} flexDirection="row" alignItems="stretch" columnGap={2} paddingTop={depth === 0 ? 2 : 1} paddingBottom={depth === 0 ? 1 : 0}>
         {/* Never shrinks: a wide quote or code block beside it would otherwise squeeze the avatar. */}
         <Box flexDirection="column" alignItems="center" flexShrink={0}>
           {ring(c.lane, c.username, size)}
@@ -147,12 +147,16 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
           {Svg && <Svg source={tailSvg(c.lane, size)} alt="Lane" width={size} height={TAIL_HEIGHT} />}
         </Box>
         <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-          <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
-            <Text wrap="truncate-end">
-              <Text bold>{c.name ?? c.username}</Text> <Text mono color={MUTED}>@{c.username}</Text>
-              <Text color={MUTED}> · {ago(c.createdAt, now)}</Text>
-            </Text>
-            {c.url ? <Link href={c.url} label={c.hash} /> : <Text mono color={MUTED}>{c.hash}</Text>}
+          <Box flexDirection="row" justifyContent="space-between" alignItems="center" columnGap={1}>
+            <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1}>
+              <Text size={depth === 0 ? 'heading' : 'body'} weight="semibold" wrap="truncate-end">
+                {c.name ?? c.username}
+              </Text>
+              <Text size="footnote" mono color={MUTED} wrap="truncate-end">
+                @{c.username} · {ago(c.createdAt, now)}
+              </Text>
+            </Box>
+            {c.url ? <Link href={c.url} label={c.hash} /> : <Text size="footnote" mono color={MUTED}>{c.hash}</Text>}
           </Box>
           <Markdown key={`b-${depth}-${c.id}`} text={isOpen || !body.isCut ? c.body : body.text} />
           {body.isCut && (
@@ -177,8 +181,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             </Box>
           )}
           {c.images > 0 && c.url && <Link href={c.url} label={c.images === 1 ? 'View image' : `View ${c.images} images`} />}
-          <Box flexDirection="row" justifyContent="space-between" alignItems="center">
-            <Box flexDirection="row" columnGap={3}>
+          <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingTop={1}>
+            <Box flexDirection="row" columnGap={4}>
               <Button
                 key={`star-${depth}-${c.id}`}
                 plain
@@ -206,13 +210,13 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     const note = (n: (typeof f.notifications)[number]) => {
       const kind = NOTE_KINDS[n.type]
       return (
-        <Box key={`n-${n.id}`} flexDirection="row" columnGap={1} paddingTop={1}>
-          {ring(n.lane, n.actor, 28)}
+        <Box key={`n-${n.id}`} flexDirection="row" columnGap={2} paddingY={1}>
+          <Box flexShrink={0}>{ring(n.lane, n.actor, 36)}</Box>
           <Box flexDirection="column" flexGrow={1} flexShrink={1}>
             <Text wrap="wrap">
               {n.isUnread && <Text color={PRIMARY}>● </Text>}
               <Text color={n.type === 'starred' ? STAR : n.lane}>{kind?.glyph ?? '•'} </Text>
-              <Text bold>@{n.actor}</Text>
+              <Text weight="semibold">@{n.actor}</Text>
               {n.others > 0 ? ` and ${n.others} ${n.others === 1 ? 'other' : 'others'}` : ''} {kind?.verb ?? n.type}
               <Text color={MUTED}> · {ago(n.createdAt, now)}</Text>
             </Text>
