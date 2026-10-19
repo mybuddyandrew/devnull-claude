@@ -321,7 +321,24 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
                   </Text>
                 </Box>
               </Box>
-              {v.bio && <Text wrap="wrap">{v.bio}</Text>}
+              {v.bio && (() => {
+                const tagged = mentionsIn(v.bio).map(h => MENTION_HREF + h)
+                return (
+                  <Markdown
+                    key={`bio-${v.username}`}
+                    text={linkMentions(v.bio)}
+                    {...(tagged.length > 0
+                      ? {
+                          pressableLinks: tagged,
+                          onLinkPress: (link: { href: string }) => {
+                            const handle = handleFromHref(link.href)
+                            if (handle) void openProfile($, handle)
+                          },
+                        }
+                      : {})}
+                  />
+                )
+              })()}
               {(v.location || v.website) && (
                 <Box flexDirection="row" columnGap={2}>
                   {v.location && <Text color={MUTED}>{v.location}</Text>}
