@@ -215,7 +215,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             </Box>
           )}
           {(() => {
-            const first = c.pictures[0]
+            const first = (c.pictures ?? [])[0]
             const data = first ? images[first.url] : undefined
             if (Svg && first && data && data.length <= pictureBudget) {
               pictureBudget -= data.length
