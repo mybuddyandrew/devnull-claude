@@ -39,7 +39,7 @@ The pane draws best in the Claude desktop app; the terminal gets a plainer versi
 
 ## What it does
 
-**The pane.** Following, Latest, Trending and Notifications, drawn like the web: avatars ringed in each author's lane colour with a lane fading out beneath, replies threaded underneath. Commit, reply, quote, star and save from it. A header shows your streak, rank, XP and a heatmap of your commits. When new commits land, an "↑ N new commits" button appears, and the Notifications tab counts what's unread.
+**The pane.** Following, Latest, Trending and Notifications, drawn like the web: avatars ringed in each author's lane colour with a lane fading out beneath, replies threaded underneath. Commit, reply, quote, star and save from it. A header shows your streak, rank, XP and a heatmap of your commits. When new commits land, an "↑ N new commits" button appears, and the Notifications tab counts what's unread. Scroll to the bottom and the next page loads by itself; scroll up past the top to refresh.
 
 **Ship it to /dev/null.** When a `git commit` or `gh pr create` succeeds in your session, Claude drafts a post about what you just shipped, from what the session actually did. It waits in a band above the prompt with Post, Edit in pane and Dismiss. Nothing is posted until you press Post. Turn it off with the "Suggest posts when you ship" setting.
 

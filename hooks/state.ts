@@ -26,3 +26,7 @@ export const INITIAL_SHIP = { status: 'idle', round: 0 } as Ship
 export const INITIAL_STATS = null as Stats | null
 export const INITIAL_LIVE = { newCount: 0, unread: 0 } as Live
 export const INITIAL_PEOPLE = [] as string[]
+export const INITIAL_PULL = 0
+// Wheel ticks up past the top that refresh the pane, and how near the end a scroll loads the next page.
+export const PULL_TICKS = 4
+export const LOAD_MORE_ROWS = 12

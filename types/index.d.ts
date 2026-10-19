@@ -98,6 +98,8 @@ declare module 'claude-code' {
       live: Live
       // usernames seen in logs and your follows, for @ completion
       people: string[]
+      // wheel ticks upward while the pane is already at its top: pull to refresh
+      pull: number
     }
   }
 }

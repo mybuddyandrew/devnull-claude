@@ -18,6 +18,9 @@ import {
   INITIAL_FEED,
   INITIAL_LOGIN,
   INITIAL_LIVE,
+  INITIAL_PULL,
+  LOAD_MORE_ROWS,
+  PULL_TICKS,
   INITIAL_STATS,
   INITIAL_TAB,
   LABELS,
@@ -36,6 +39,7 @@ const feed = atom({ plugin: 'devnull', key: 'feed' } as const, INITIAL_FEED)
 const login = atom({ plugin: 'devnull', key: 'login' } as const, INITIAL_LOGIN)
 const tab = atom({ plugin: 'devnull', key: 'tab' } as const, INITIAL_TAB)
 const live = atom({ plugin: 'devnull', key: 'live' } as const, INITIAL_LIVE)
+const pull = atom({ plugin: 'devnull', key: 'pull' } as const, INITIAL_PULL)
 const stats = atom({ plugin: 'devnull', key: 'stats' } as const, INITIAL_STATS)
 
 export async function openPane($: EngineInterface) {
@@ -58,6 +62,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     const draft = await read($, compose)
     const open = await read($, expanded)
     const fresh = await read($, live)
+    const pulled = await read($, pull)
     const me = await read($, stats)
     const now = Date.now()
 
@@ -106,20 +111,20 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
 
     const targetLabel = draft.mode === 'reply' ? `Replying to @${draft.targetHandle}` : draft.mode === 'quote' ? `Quoting @${draft.targetHandle}` : undefined
     const composer = (
-      <Box flexDirection="column" borderStyle="round" borderColor={draft.mode === 'new' ? HAIRLINE : PRIMARY} paddingX={1} marginBottom={1}>
+      <Box flexDirection="column" alignItems="stretch" width="100%" borderStyle="round" borderColor={draft.mode === 'new' ? HAIRLINE : PRIMARY} paddingX={1} paddingY={1} marginBottom={1}>
         {targetLabel && (
           <Box flexDirection="row" justifyContent="space-between">
             <Text color={PRIMARY}>{targetLabel}</Text>
             <Button key="compose-cancel" plain dimColor label="Cancel" onPress={() => aim($, 'new')} />
           </Box>
         )}
-        {Input && <Input
+        {Input && <Box flexDirection="row" width="100%"><Box flexDirection="column" flexGrow={1} alignItems="stretch"><Input
           key={`compose-${draft.round}`}
           {...(draft.draft ? { value: draft.draft } : {})}
           placeholder={draft.mode === 'reply' ? 'Write your reply' : draft.mode === 'quote' ? 'Add your take' : "What's on your mind?"}
           submitLabel={draft.isSending ? 'Committing…' : draft.mode === 'reply' ? 'Reply' : draft.mode === 'quote' ? 'Quote' : 'Commit'}
           onSubmit={(value: string) => void send($, value)}
-        />}
+        /></Box></Box>}
         {draft.error && <Text color={DANGER}>Not sent: {draft.error}</Text>}
       </Box>
     )
@@ -242,6 +247,13 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     const showNew = fresh.newCount > 0 && (showing === 'following' || showing === 'latest')
     return (
       <Box flexDirection="column">
+        {pulled > 0 && (
+          <Box flexDirection="row" justifyContent="center" paddingBottom={1}>
+            <Text color={PRIMARY}>
+              {pulled >= PULL_TICKS ? '↻ Refreshing…' : `↻ Keep scrolling up to refresh ${'●'.repeat(pulled)}${'○'.repeat(PULL_TICKS - pulled)}`}
+            </Text>
+          </Box>
+        )}
         {header}
         {tabs}
         {showing !== 'notifications' && composer}
@@ -267,7 +279,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
         {showing === 'notifications' ? f.notifications.map(note) : f.commits.map(c => commit(c, 0))}
         {f.nextCursor && !isEmpty && (
           <Box flexDirection="row" justifyContent="center" paddingY={1}>
-            <Button key="more" label={f.isLoading ? 'Loading…' : 'Load more'} onPress={() => refresh($, true)} />
+            {f.isLoading ? <Text color={MUTED}>Loading more…</Text> : <Button key="more" label="Load more" onPress={() => refresh($, true)} />}
           </Box>
         )}
       </Box>
@@ -282,4 +294,38 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
 // Draws the pane; register.tsx hands this file its `on`.
 export function registerPane(on: On): void {
   on('ui.render', { component: 'Pane', requestId: PANE }, ($, e) => drawPane($, e))
+
+  // Infinite scroll near the bottom, and pull to refresh: wheel up past the top a few times in a row.
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const moved = await next(e)
+    if (e.origin.kind !== 'person') return moved
+    const now = await $.clock.now()
+    if (e.by < 0 && e.offset === 0) {
+      const ticks = now - lastPullAt > PULL_WINDOW_MS ? 1 : (await read($, pull)) + 1
+      lastPullAt = now
+      if (ticks >= PULL_TICKS) {
+        await update($, pull, () => PULL_TICKS)
+        await refresh($)
+        await update($, pull, () => 0)
+      } else {
+        await update($, pull, () => ticks)
+        $.clock.after(PULL_WINDOW_MS, () => {
+          void (async () => {
+            if ((await $.clock.now()) - lastPullAt >= PULL_WINDOW_MS) await update($, pull, () => 0)
+          })()
+        })
+      }
+      return moved
+    }
+    if (e.by > 0) {
+      if ((await read($, pull)) > 0) await update($, pull, () => 0)
+      const f = await read($, feed)
+      if (f.nextCursor && !f.isLoading && e.offset + e.bodyRows >= e.contentRows - LOAD_MORE_ROWS) void refresh($, true)
+    }
+    return moved
+  })
 }
+
+// Pull ticks further apart than this start over.
+const PULL_WINDOW_MS = 1500
+let lastPullAt = 0
