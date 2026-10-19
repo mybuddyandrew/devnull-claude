@@ -198,3 +198,51 @@ export const NOTE_KINDS: Record<string, { verb: string; glyph: string }> = {
   approved: { verb: 'approved your commit', glyph: '✓' },
   rejected: { verb: 'held back your commit', glyph: '!' },
 }
+
+// @mentions: a handle is a letter or digit then up to 38 of letters, digits, _ or -, as GitHub usernames are.
+// Its link is the person's dev-null.sh profile, the @ written %40 as the desktop's links need.
+export const MENTION_HREF = 'https://dev-null.sh/%40'
+const MENTION = /(^|[^\w/@.])@([A-Za-z0-9][A-Za-z0-9_-]{0,38})(?![\w-])/g
+
+// The handles a text mentions, outside code, each once, in order.
+export const mentionsIn = (text: string): string[] => {
+  const seen = new Set<string>()
+  for (const part of proseParts(text)) for (const m of part.matchAll(MENTION)) seen.add(m[2]!)
+  return [...seen]
+}
+
+// Markdown with each @mention outside code made a link to that person's profile.
+export const linkMentions = (markdown: string): string => {
+  let inFence = false
+  return markdown
+    .split('\n')
+    .map(line => {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence
+        return line
+      }
+      if (inFence) return line
+      // Odd-numbered pieces between backticks are inline code: left as written.
+      return line
+        .split('`')
+        .map((piece, i) => (i % 2 === 1 ? piece : piece.replace(MENTION, (_, before: string, handle: string) => `${before}[@${handle}](${MENTION_HREF}${handle})`)))
+        .join('`')
+    })
+    .join('\n')
+}
+
+// The handle a mention link points at, or undefined for any other link.
+export const handleFromHref = (href: string): string | undefined =>
+  href.startsWith(MENTION_HREF) ? decodeURIComponent(href.slice(MENTION_HREF.length)).replace(/^@/, '') || undefined : undefined
+
+// The text outside fenced and inline code, where a mention can be.
+const proseParts = (text: string): string[] => {
+  let inFence = false
+  return text.split('\n').flatMap(line => {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence
+      return []
+    }
+    return inFence ? [] : line.split('`').filter((_, i) => i % 2 === 0)
+  })
+}

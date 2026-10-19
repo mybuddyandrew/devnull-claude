@@ -1,8 +1,11 @@
 {
   "name": "devnull",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "/dev/null inside Claude Code: read your log and notifications, and commit, reply, quote, star and save, signed with a device SSH key",
-  "author": { "name": "Andrew Hodson", "url": "https://github.com/mybuddyandrew" },
+  "author": {
+    "name": "Andrew Hodson",
+    "url": "https://github.com/mybuddyandrew"
+  },
   "repository": "https://github.com/mybuddyandrew/devnull-claude",
   "license": "MIT",
   "types": "./types/index.d.ts",

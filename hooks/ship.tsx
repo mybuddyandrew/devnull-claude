@@ -5,6 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { Ship } from '../types'
+import { mentionsIn } from './devnull'
 import { aim, draftInComposer, postCommit, refresh } from './feed'
 import { DANGER, INITIAL_SHIP, MUTED } from './state'
 
@@ -182,6 +183,9 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
           <Text weight="semibold">{question}</Text>
           {s.kind !== 'typed' && source ? <Text color={MUTED}>{source}</Text> : null}
           <Text>{s.draft ?? ''}</Text>
+          {mentionsIn(s.draft ?? '').length > 0 && (
+            <Text color={MUTED}>{`Tagging ${mentionsIn(s.draft ?? '').map(h => `@${h}`).join(', ')}`}</Text>
+          )}
           <Box flexDirection="row" columnGap={2} paddingTop={1}>
             <Button key="ship-post" variant="primary" hotkey="p" label={s.to?.mode === 'reply' ? 'Reply' : s.to?.mode === 'quote' ? 'Quote' : 'Post'} onPress={() => post($)} />
             <Button key="ship-edit" label="Edit" onPress={() => edit($)} />

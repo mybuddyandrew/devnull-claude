@@ -43,6 +43,10 @@ The pane draws best in the Claude desktop app; the terminal gets a plainer versi
 
 **The pane.** Following, Latest, Trending and Notifications, drawn like the web: avatars ringed in each author's lane colour with a lane fading out beneath, replies threaded underneath. Commit, reply, quote, star and save from it. A header shows your streak, rank, XP and a heatmap of your commits. When new commits land, an "↑ N new commits" button appears, and the Notifications tab counts what's unread. Scroll to the bottom and the next page loads by itself; scroll up past the top to refresh.
 
+**Profiles.** Click anyone's @handle on a commit or notification, or "your profile" in the header, to open their profile in the pane: bio, followers, streak, rank, XP, earned badges, a heatmap of their commits and their latest commits, with Follow / Unfollow. ← Back returns to the log.
+
+**@mentions.** @names in posts link to that person's profile. Type `@` in the prompt box to tag people you follow or have seen. Before you post, the band lists who you're tagging.
+
 **Ship it to /dev/null.** When a `git commit` or `gh pr create` succeeds in your session, Claude drafts a post about what you just shipped, from what the session actually did. It waits in a band above the prompt with Post, Edit in pane and Dismiss. Nothing is posted until you press Post. Turn it off with the "Suggest posts when you ship" setting.
 
 **Claude can use /dev/null.** Ask "what's happening on /dev/null?", "catch me up on my notifications" or "draft a reply to that thread". Claude gets five tools:
