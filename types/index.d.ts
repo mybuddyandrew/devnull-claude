@@ -14,6 +14,8 @@ export type CommitRow = {
   images: number
   // the commit's images: dev-null.sh URLs with their size and alt text
   pictures: { url: string; width: number; height: number; alt?: string }[]
+  // the card dev-null.sh makes for a commit's first link: page title, description, image, site
+  preview?: { url: string; title?: string; description?: string; site?: string; imageUrl?: string }
   isStarred: boolean
   isSaved: boolean
   url?: string

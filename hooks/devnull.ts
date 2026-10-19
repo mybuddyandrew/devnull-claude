@@ -109,6 +109,7 @@ export const toCommitRow = (c: Json): CommitRow => {
     stars: num(c.stars_count),
     replies: num(c.replies_count),
     images: list(c.images).length,
+    ...linkPreviewOf(c.link_preview),
     pictures: list(c.images)
       .map(i => ({ url: str(i.url) ?? '', width: num(i.width), height: num(i.height), ...(str(i.description) ? { alt: str(i.description) } : {}) }))
       .filter(p => p.url.startsWith('https://')),
@@ -258,5 +259,33 @@ export const pictureSvg = (dataUri: string, width: number, height: number, max =
     source: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><clipPath id="p"><rect width="${w}" height="${h}" rx="8"/></clipPath><image href="${dataUri}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice" clip-path="url(#p)"/><rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="8" fill="none" stroke="#2a2a2d"/></svg>`,
     width: w,
     height: h,
+  }
+}
+
+// A commit's link preview, once dev-null.sh has fetched it: the card's text and image, the link made safe for
+// the desktop's links (no raw @). A playable embed (a video, a song) is drawn as its card.
+export const linkPreviewOf = (raw: unknown): { preview?: CommitRow['preview'] } => {
+  const p = obj(raw)
+  const url = str(p.url)
+  if (!url || !/^https?:\/\//.test(url) || p.is_pending === true) return {}
+  const embed = obj(p.embed)
+  const image = str(p.image_url) ?? str(embed.poster)
+  const site = str(p.site_name) ?? str(embed.provider) ?? hostOf(url)
+  return {
+    preview: {
+      url: url.replace(/@/g, '%40'),
+      ...(str(p.title) ? { title: str(p.title) } : {}),
+      ...(str(p.description) ? { description: str(p.description) } : {}),
+      ...(site ? { site } : {}),
+      ...(image && image.startsWith('https://') ? { imageUrl: image } : {}),
+    },
+  }
+}
+
+const hostOf = (url: string): string | undefined => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return undefined
   }
 }

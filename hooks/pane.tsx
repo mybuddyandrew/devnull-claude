@@ -229,6 +229,41 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             }
             return c.images > 0 && c.url ? <Link href={c.url} label={c.images === 1 ? 'View image' : `View ${c.images} images`} /> : null
           })()}
+          {c.preview && (() => {
+            // The link's card, as dev-null.sh shows it: its image (within the picture budget), site, title and description.
+            const card = c.preview
+            const thumb = card.imageUrl ? images[card.imageUrl] : undefined
+            const hasThumb = Boolean(Svg && thumb && thumb.length <= pictureBudget)
+            if (hasThumb && thumb) pictureBudget -= thumb.length
+            const pic = hasThumb && thumb ? pictureSvg(thumb, 120, 90, 120) : undefined
+            return (
+              <Box key={`card-${depth}-${c.id}`} flexDirection="row" columnGap={2} borderStyle="round" borderColor={HAIRLINE} paddingX={1} marginTop={1}>
+                {Svg && pic && (
+                  <Box flexShrink={0}>
+                    <Svg source={pic.source} alt={card.title ?? 'Link preview'} width={pic.width} height={pic.height} />
+                  </Box>
+                )}
+                <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                  {card.site && (
+                    <Text size="footnote" color={MUTED}>
+                      {card.site}
+                    </Text>
+                  )}
+                  {card.title && (
+                    <Text weight="semibold" wrap="truncate-end">
+                      {card.title}
+                    </Text>
+                  )}
+                  {card.description && (
+                    <Text color={MUTED} wrap="truncate-end">
+                      {card.description}
+                    </Text>
+                  )}
+                  <Link href={card.url} label="Open ↗" />
+                </Box>
+              </Box>
+            )
+          })()}
           <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingTop={1}>
             <Box flexDirection="row" columnGap={4}>
               <Button

@@ -14,7 +14,7 @@ const ship = atom({ plugin: 'devnull', key: 'ship' } as const, INITIAL_SHIP)
 const POSTED_MS = 8000
 const MAX_CHARS = 4000
 
-const STYLE = 'Plain text, under 280 characters, first person, casual dev voice, no hashtags, no emojis unless natural, no quotes around it. Reply with the post text only.'
+const STYLE = 'Plain text, first person, casual dev voice, under 280 characters unless asked for more, no hashtags, no emojis unless natural, no hype, no quotes around it. Reply with the post text only.'
 const SHIPPED_ASK = `Write ONE post for /dev/null, a small social network for developers, about what I just shipped and why, based on this session. ${STYLE}`
 const SESSION_ASK = `Write ONE post for /dev/null, a small social network for developers, summing up what I've been working on in this session: what it is and what's interesting about it. ${STYLE}`
 
@@ -79,6 +79,30 @@ export async function draftFromSession($: EngineInterface, hint: string): Promis
 }
 
 // /devnull post <text>: text you typed, offered in the band; nothing is posted until you press Post.
+// /devnull revise <what to change>: Claude rewrites the draft waiting in the band, which stays there to confirm.
+export async function reviseDraft($: EngineInterface, instructions: string): Promise<string> {
+  const now = await read($, ship)
+  if (now.status !== 'ready' || !now.draft) return 'No draft is waiting above the prompt to revise.'
+  const ask = instructions.trim() || 'tighten it'
+  const before = now.draft
+  await update($, ship, (s): Ship => ({ ...s, status: 'drafting', source: 'your changes' }))
+  const prompt = `Here is a draft post for /dev/null, a small social network for developers:\n\n${before}\n\nRewrite it: ${ask}. Keep its @mentions and links unless asked to change them. ${STYLE}`
+  let text: string | undefined
+  try {
+    const r = await $.model.fork({ prompt })
+    if (r.isAnswered && r.text.trim()) text = clean(r.text)
+  } catch {}
+  if (!text) {
+    try {
+      const r = await $.model.complete({ model: 'haiku', prompt, maxTokens: 1200, timeoutMs: 30000 })
+      if (r.isAnswered && r.text.trim()) text = clean(r.text)
+    } catch {}
+  }
+  // Back to the draft as it was, or the rewrite, still waiting for Post.
+  await update($, ship, (s): Ship => ({ ...s, status: 'ready', source: now.source, draft: text ?? before, ...(text ? {} : { error: 'Could not revise it; the draft is unchanged.' }) }))
+  return text ? 'Revised. It is waiting above the prompt.' : 'Could not revise it; the draft is unchanged.'
+}
+
 export async function offerPost($: EngineInterface, text: string, to?: Ship['to']): Promise<void> {
   const source = to ? `${to.mode === 'reply' ? 'Reply to' : 'Quote of'} @${to.handle ?? 'commit'}` : 'Your post'
   await update($, ship, (s): Ship => ({ status: 'ready', kind: 'typed', source, draft: text.slice(0, MAX_CHARS), round: s.round + 1, ...(to ? { to } : {}) }))
@@ -183,11 +207,13 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
           <Text weight="semibold">{question}</Text>
           {s.kind !== 'typed' && source ? <Text color={MUTED}>{source}</Text> : null}
           <Text>{s.draft ?? ''}</Text>
+          {s.error && <Text color={DANGER}>{s.error}</Text>}
           {mentionsIn(s.draft ?? '').length > 0 && (
             <Text color={MUTED}>{`Tagging ${mentionsIn(s.draft ?? '').map(h => `@${h}`).join(', ')}`}</Text>
           )}
           <Box flexDirection="row" columnGap={2} paddingTop={1}>
             <Button key="ship-post" variant="primary" hotkey="p" label={s.to?.mode === 'reply' ? 'Reply' : s.to?.mode === 'quote' ? 'Quote' : 'Post'} onPress={() => post($)} />
+            <Button key="ship-revise" label="✨ Revise" onPress={() => void $.prompt.fill({ text: '/devnull revise ' }).catch(() => {})} />
             <Button key="ship-edit" label="Edit" onPress={() => edit($)} />
             {dismissButton}
           </Box>

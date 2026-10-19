@@ -42,7 +42,7 @@ export async function refresh($: EngineInterface, more = false): Promise<void> {
       const people = rows.flatMap(r => [r, ...r.replyPreview, ...(r.quoted ? [r.quoted] : [])])
       void loadAvatars($, people.map(r => [r.username, r.avatarUrl]))
       // The first image of each commit, small, for drawing inline.
-      void loadPictures($, rows.flatMap(r => (r.pictures[0] ? [r.pictures[0].url] : []))).catch(() => {})
+      void loadPictures($, rows.flatMap(r => [...(r.pictures[0] ? [r.pictures[0].url] : []), ...(r.preview?.imageUrl ? [r.preview.imageUrl] : [])])).catch(() => {})
       // Everyone seen in a log becomes an @ completion.
       void rememberPeople($, people.map(r => r.username)).catch(() => {})
     }

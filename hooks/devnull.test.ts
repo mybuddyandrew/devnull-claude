@@ -87,3 +87,14 @@ test('commit images are read and framed at their own shape', async () => {
   expect(pic.height).toBe(Math.round((260 * 552) / 616))
   expect(pic.source).toContain('href="data:image/jpeg;base64,AAAA"')
 })
+
+test('a link preview becomes a card; a pending one is skipped', async () => {
+  const row = toCommitRow({
+    id: '1',
+    author: { username: 'kim' },
+    link_preview: { url: 'https://example.com/@kim/song', title: 'A song', description: 'Listen', image_url: 'https://cdn.example.com/a.jpg', site_name: null, is_pending: false, embed: { provider: 'Suno', kind: 'audio' } },
+  })
+  expect(row.preview).toEqual({ url: 'https://example.com/%40kim/song', title: 'A song', description: 'Listen', site: 'Suno', imageUrl: 'https://cdn.example.com/a.jpg' })
+  expect(toCommitRow({ id: '2', author: {}, link_preview: { url: 'https://example.com', is_pending: true } }).preview).toBeUndefined()
+  expect(toCommitRow({ id: '3', author: {}, link_preview: { url: 'https://www.example.com/x' } }).preview?.site).toBe('example.com')
+})
