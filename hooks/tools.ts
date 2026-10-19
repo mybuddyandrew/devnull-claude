@@ -59,7 +59,7 @@ const TOOLS = [
   {
     name: 'devnull_draft',
     description:
-      'Draft a /dev/null commit for the user. This NEVER posts: it only puts the text in the /dev/null pane composer (and opens the pane) for the user to edit and press Commit themselves. Optionally make it a reply (reply_to) or a quote (quote) by commit id. 3 to 4000 characters.',
+      'Draft a /dev/null commit for the user. This NEVER posts: it only puts the text in the prompt box as `/devnull post <text>` (and opens the pane) for the user to edit and send themselves. Optionally make it a reply (reply_to) or a quote (quote) by commit id. 3 to 4000 characters.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -185,7 +185,7 @@ async function draft($: EngineInterface, e: Record<string, unknown>): Promise<st
   const to = reply ? { mode: 'reply' as const, targetId: reply } : quote ? { mode: 'quote' as const, targetId: quote } : { mode: 'new' as const }
   await draftInComposer($, body, to)
   await openPane($)
-  return 'Draft placed in the /dev/null pane composer. The user must press Commit to post it.'
+  return "Draft placed in the user's prompt box as /devnull post. The user must press Enter to post it."
 }
 
 // Every handler answers with text and never throws: the model reads the failure.

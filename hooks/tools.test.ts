@@ -55,7 +55,7 @@ test('the thread tool accepts a link and reads ancestors and replies', async ($,
 test('the draft tool only fills the composer and never posts', async ($, on) => {
   const seen = stub(on, 'me', () => FOLLOWING)
   const out = await call($, 'devnull_draft', { text: 'hello world', reply_to: UUID })
-  expect(out.result).toContain('The user must press Commit')
+  expect(out.result).toContain('The user must press Enter')
   expect(seen.some(f => f.method === 'POST')).toBe(false)
   const short = await call($, 'devnull_draft', { text: 'hi' })
   expect(short.result).toContain('3 to 4000')

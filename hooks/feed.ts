@@ -76,8 +76,16 @@ export async function react($: EngineInterface, row: CommitRow, kind: 'star' | '
   }
 }
 
+// Aims the next post (a reply to or quote of a commit, or a new one) and, for a reply or quote, starts it in
+// Claude's prompt box, where there's room to write.
 export async function aim($: EngineInterface, mode: Compose['mode'], row?: CommitRow): Promise<void> {
   await update($, compose, c => ({ ...c, mode, targetId: row?.id, targetHandle: row?.username, error: undefined }))
+  if (mode !== 'new') await startInPrompt($)
+}
+
+// Puts `/devnull post ` (and any draft) in Claude's prompt box: full width and multi-line, unlike a pane field.
+export async function startInPrompt($: EngineInterface, draft = ''): Promise<void> {
+  await $.prompt.fill({ text: `/devnull post ${draft}` }).catch(() => {})
 }
 
 // Commits the composer's text as a new commit, a reply or a quote.
@@ -114,7 +122,8 @@ export async function postCommit($: EngineInterface, body: string, to: { parentI
 
 // Puts text in the pane's composer for the person to edit and send.
 export async function draftInComposer($: EngineInterface, text: string, to: { mode?: Compose['mode']; targetId?: string; targetHandle?: string } = {}): Promise<void> {
-  await update($, compose, (x): Compose => ({ mode: to.mode ?? 'new', targetId: to.targetId, targetHandle: to.targetHandle, isSending: false, round: x.round + 1, draft: text }))
+  await update($, compose, (x): Compose => ({ mode: to.mode ?? 'new', targetId: to.targetId, targetHandle: to.targetHandle, isSending: false, round: x.round + 1 }))
+  await startInPrompt($, text)
 }
 
 // /devnull post <text>: posts what was typed in the main prompt box, to whatever the composer is aimed at

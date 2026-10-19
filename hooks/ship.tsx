@@ -162,7 +162,7 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
           <Text>{s.draft ?? ''}</Text>
           <Box flexDirection="row" columnGap={2}>
             <Button key="ship-post" variant="primary" hotkey="p" label="Post" onPress={() => post($)} />
-            <Button key="ship-edit" label="Edit in pane" onPress={() => edit($)} />
+            <Button key="ship-edit" label="Edit" onPress={() => edit($)} />
             {dismissButton}
           </Box>
         </Box>

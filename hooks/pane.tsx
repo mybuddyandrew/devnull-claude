@@ -4,7 +4,7 @@ import type { EngineInterface, On, RenderInput } from 'claude-code'
 
 import type { CommitRow, Live } from '../types'
 import { NOTE_KINDS, TAIL_HEIGHT, ago, avatarSvg, preview, tailSvg, underlineSvg } from './devnull'
-import { aim, react, refresh, send, show } from './feed'
+import { aim, react, refresh, show, startInPrompt } from './feed'
 import { startLogin, syncLogin } from './login'
 import { heatmapSvg } from './streaks'
 import {
@@ -56,9 +56,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     try {
     const els = $.ui.resolve(e)
     const { Box, Text, Button, Link, Markdown } = els
-    // The terminal draws no SVG and the phone no text field: they get a dot and no composer.
+    // The terminal draws no SVG: it gets a dot where the avatar would be.
     const Svg = 'Svg' in els ? els.Svg : undefined
-    const Input = 'Input' in els ? els.Input : undefined
     const showing = await read($, tab)
     const f = await read($, feed)
     const who = await read($, login)
@@ -115,31 +114,25 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     }
 
     const targetLabel = draft.mode === 'reply' ? `Replying to @${draft.targetHandle}` : draft.mode === 'quote' ? `Quoting @${draft.targetHandle}` : undefined
+    // The composer is a full-width box that starts the post in Claude's prompt box: the pane's own text
+    // field can't be made wider or multi-line on the desktop, the prompt box is both.
     const composer = (
-      <Box flexDirection="column" alignItems="stretch" width="100%" borderStyle="round" borderColor={draft.mode === 'new' ? HAIRLINE : PRIMARY} paddingX={1} paddingY={1} marginBottom={1}>
+      <Box flexDirection="column" width="100%" borderStyle="round" borderColor={draft.mode === 'new' ? HAIRLINE : PRIMARY} paddingX={1} paddingY={1} marginBottom={1}>
         {targetLabel && (
-          <Box flexDirection="row" justifyContent="space-between">
+          <Box flexDirection="row" justifyContent="space-between" paddingBottom={1}>
             <Text color={PRIMARY}>{targetLabel}</Text>
             <Button key="compose-cancel" plain dimColor label="Cancel" onPress={() => aim($, 'new')} />
           </Box>
         )}
-        {Input && <Box flexDirection="row" width="100%"><Box flexDirection="column" flexGrow={1} alignItems="stretch"><Input
-          key={`compose-${draft.round}`}
-          {...(draft.draft ? { value: draft.draft } : {})}
-          placeholder={draft.mode === 'reply' ? 'Write your reply' : draft.mode === 'quote' ? 'Add your take' : "What's on your mind?"}
-          submitLabel={draft.isSending ? 'Committing…' : draft.mode === 'reply' ? 'Reply' : draft.mode === 'quote' ? 'Quote' : 'Commit'}
-          onSubmit={(value: string) => void send($, value)}
-        /></Box></Box>}
-        <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingTop={1}>
-          <Text size="footnote" color={MUTED}>
-            Longer post? Write it in Claude's prompt box.
-          </Text>
+        <Box flexDirection="row" justifyContent="space-between" alignItems="center">
           <Button
-            key="compose-prompt"
+            key="compose-open"
             plain
-            label="✎ Write in prompt box"
-            onPress={() => void $.prompt.fill({ text: '/devnull post ' }).catch(() => {})}
+            dimColor
+            label={draft.mode === 'reply' ? 'Write your reply…' : draft.mode === 'quote' ? 'Add your take…' : "What's on your mind?"}
+            onPress={() => startInPrompt($)}
           />
+          <Button key="compose-go" variant="primary" label={draft.mode === 'reply' ? 'Reply' : draft.mode === 'quote' ? 'Quote' : 'Commit'} onPress={() => startInPrompt($)} />
         </Box>
         {draft.error && <Text color={DANGER}>Not sent: {draft.error}</Text>}
       </Box>
