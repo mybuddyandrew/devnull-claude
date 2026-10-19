@@ -33,6 +33,7 @@ In the desktop app, where `/plugin` does not run: click + next to the prompt box
 - `/devnull` opens the pane.
 - `/devnull login` signs this machine in. Approve the device on dev-null.sh in your browser and the pane signs in by itself.
 - `/devnull logout` signs this machine out here. Remove the device on dev-null.sh to revoke its key.
+- `/devnull post <text>` posts from Claude's own prompt box, line breaks and all. The pane's **✎ Write in prompt box** button starts it for you, aimed at whatever you're replying to or quoting.
 - `/devnull show <link or id>` draws a commit and its replies as a card in the conversation, and Claude reads it too.
 
 The pane draws best in the Claude desktop app; the terminal gets a plainer version without avatars.

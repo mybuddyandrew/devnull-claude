@@ -116,3 +116,26 @@ export async function postCommit($: EngineInterface, body: string, to: { parentI
 export async function draftInComposer($: EngineInterface, text: string, to: { mode?: Compose['mode']; targetId?: string; targetHandle?: string } = {}): Promise<void> {
   await update($, compose, (x): Compose => ({ mode: to.mode ?? 'new', targetId: to.targetId, targetHandle: to.targetHandle, isSending: false, round: x.round + 1, draft: text }))
 }
+
+// /devnull post <text>: posts what was typed in the main prompt box, to whatever the composer is aimed at
+// (a reply or a quote when one is set), then resets the composer. Answers the command's output line.
+export async function postFromPrompt($: EngineInterface, text: string): Promise<string> {
+  if (!(await $.store.get('username'))) return 'Not signed in to /dev/null. Run /devnull login first.'
+  const body = text.trim()
+  if (body.length < 3) return 'Nothing to post: write at least 3 characters after /devnull post.'
+  if (body.length > 4000) return `Not posted: /dev/null takes up to 4000 characters and this is ${body.length}.`
+  const c = await read($, compose)
+  try {
+    const row = await postCommit($, body, {
+      parentId: c.mode === 'reply' ? c.targetId : undefined,
+      quotedId: c.mode === 'quote' ? c.targetId : undefined,
+    })
+    await update($, compose, (x): Compose => ({ mode: 'new', isSending: false, round: x.round + 1 }))
+    $.ui.toast(c.mode === 'reply' ? '/dev/null: replied' : c.mode === 'quote' ? '/dev/null: quoted' : '/dev/null: committed')
+    await refresh($).catch(() => {})
+    const what = c.mode === 'reply' ? `Replied to @${c.targetHandle}` : c.mode === 'quote' ? `Quoted @${c.targetHandle}` : 'Committed'
+    return `${what} on /dev/null${row.url ? `: ${row.url}` : '.'}`
+  } catch (error) {
+    return `Not posted: ${(error as Error).message}`
+  }
+}

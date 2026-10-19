@@ -1,6 +1,7 @@
 import type { Register } from 'claude-code'
 
 import { finish, logout, poll, startLogin, syncLogin, type Pending } from './login'
+import { postFromPrompt } from './feed'
 import { openPane, registerPane } from './pane'
 import { registerShip } from './ship'
 import { registerStreaks, startStreaks } from './streaks'
@@ -13,7 +14,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'devnull',
       description: 'Open the /dev/null pane (log + notifications)',
-      argumentHint: '[show <hash|link> | login | logout]',
+      argumentHint: '[post <text> | show <link> | login | logout]',
     })
     await syncLogin($)
     // The people you follow seed @ completion; in the background, so startup never waits on dev-null.sh.
@@ -28,6 +29,8 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'devnull' }, async ($, e) => {
     const [sub = '', ...rest] = e.args.trim().split(/\s+/)
+    // The post's own text, line breaks kept: everything after the word "post".
+    if (sub === 'post') return { text: await postFromPrompt($, e.args.trim().slice('post'.length).trim()) }
     if (sub === 'login') {
       await $.ui.open({ id: PANE, title: '/dev/null' })
       return { text: rest[0] ? await finish($, rest.join('')) : await startLogin($) }

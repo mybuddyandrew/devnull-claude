@@ -130,6 +130,17 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
           submitLabel={draft.isSending ? 'Committing…' : draft.mode === 'reply' ? 'Reply' : draft.mode === 'quote' ? 'Quote' : 'Commit'}
           onSubmit={(value: string) => void send($, value)}
         /></Box></Box>}
+        <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingTop={1}>
+          <Text size="footnote" color={MUTED}>
+            Longer post? Write it in Claude's prompt box.
+          </Text>
+          <Button
+            key="compose-prompt"
+            plain
+            label="✎ Write in prompt box"
+            onPress={() => void $.prompt.fill({ text: '/devnull post ' }).catch(() => {})}
+          />
+        </Box>
         {draft.error && <Text color={DANGER}>Not sent: {draft.error}</Text>}
       </Box>
     )
