@@ -3,7 +3,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { CommitRow, Compose, Tab } from '../types'
-import { api, commitPath, loadAvatars, nextCursorOf } from './core'
+import { api, commitPath, loadAvatars, loadPictures, nextCursorOf } from './core'
 import { rememberPeople } from './transcript'
 import { offerPost } from './ship'
 import { dataList, patchCommit, toCommitRow, toNoteRow } from './devnull'
@@ -41,6 +41,8 @@ export async function refresh($: EngineInterface, more = false): Promise<void> {
       await update($, feed, f => ({ ...f, isLoading: false, commits: more ? [...f.commits, ...rows].slice(0, MAX_LOADED) : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
       const people = rows.flatMap(r => [r, ...r.replyPreview, ...(r.quoted ? [r.quoted] : [])])
       void loadAvatars($, people.map(r => [r.username, r.avatarUrl]))
+      // The first image of each commit, small, for drawing inline.
+      void loadPictures($, rows.flatMap(r => [...(r.pictures[0] ? [r.pictures[0].url] : []), ...(r.preview?.imageUrl ? [r.preview.imageUrl] : [])])).catch(() => {})
       // Everyone seen in a log becomes an @ completion.
       void rememberPeople($, people.map(r => r.username)).catch(() => {})
     }

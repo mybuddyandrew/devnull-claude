@@ -3,9 +3,10 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderInput } from 'claude-code'
 
 import type { CommitRow, Live } from '../types'
-import { NOTE_KINDS, TAIL_HEIGHT, ago, avatarSvg, preview, tailSvg, underlineSvg } from './devnull'
+import { MENTION_HREF, NOTE_KINDS, pictureSvg, TAIL_HEIGHT, ago, avatarSvg, handleFromHref, linkMentions, mentionsIn, preview, tailSvg, underlineSvg } from './devnull'
 import { aim, react, refresh, show, startInPrompt } from './feed'
 import { startLogin, syncLogin } from './login'
+import { closeProfile, openProfile, toggleFollow } from './profile'
 import { heatmapSvg } from './streaks'
 import {
   AVATAR_BUDGET_CHARS,
@@ -19,6 +20,9 @@ import {
   INITIAL_LOGIN,
   INITIAL_LIVE,
   INITIAL_PULL,
+  INITIAL_PICTURES,
+  INITIAL_PROFILE,
+  PICTURE_BUDGET_CHARS,
   INITIAL_WINDOW_START,
   MAX_DRAWN,
   SLIDE_ROWS,
@@ -44,6 +48,8 @@ const tab = atom({ plugin: 'devnull', key: 'tab' } as const, INITIAL_TAB)
 const live = atom({ plugin: 'devnull', key: 'live' } as const, INITIAL_LIVE)
 const pull = atom({ plugin: 'devnull', key: 'pull' } as const, INITIAL_PULL)
 const windowStart = atom({ plugin: 'devnull', key: 'windowStart' } as const, INITIAL_WINDOW_START)
+const profile = atom({ plugin: 'devnull', key: 'profile' } as const, INITIAL_PROFILE)
+const pictures = atom({ plugin: 'devnull', key: 'pictures' } as const, INITIAL_PICTURES)
 const stats = atom({ plugin: 'devnull', key: 'stats' } as const, INITIAL_STATS)
 
 export async function openPane($: EngineInterface) {
@@ -67,11 +73,15 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     const fresh = await read($, live)
     const pulled = await read($, pull)
     const from = await read($, windowStart)
+    const person = await read($, profile)
+    const images = await read($, pictures)
     const me = await read($, stats)
     const now = Date.now()
 
     // Photos past the budget fall back to initials, so one draw stays well under what the desktop takes.
     let photoBudget = AVATAR_BUDGET_CHARS
+    // Commit images have a budget of their own; past it, a commit shows a link instead.
+    let pictureBudget = PICTURE_BUDGET_CHARS
     const ring = (lane: string, username: string, size: number) => {
       if (!Svg) return <Text color={lane}>●</Text>
       const face = faces[username]
@@ -156,13 +166,33 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               <Text size={depth === 0 ? 'heading' : 'body'} weight="semibold" wrap="truncate-end">
                 {c.name ?? c.username}
               </Text>
-              <Text size="footnote" mono color={MUTED} wrap="truncate-end">
-                @{c.username} · {ago(c.createdAt, now)}
+              <Button key={`who-${depth}-${c.id}`} plain dimColor label={`@${c.username}`} onPress={() => openProfile($, c.username)} />
+              <Text size="footnote" color={MUTED}>
+                · {ago(c.createdAt, now)}
               </Text>
             </Box>
             {c.url ? <Link href={c.url} label={c.hash} /> : <Text size="footnote" mono color={MUTED}>{c.hash}</Text>}
           </Box>
-          <Markdown key={`b-${depth}-${c.id}`} text={isOpen || !body.isCut ? c.body : body.text} />
+          {(() => {
+            const text = isOpen || !body.isCut ? c.body : body.text
+            const tagged = mentionsIn(text).map(h => MENTION_HREF + h)
+            // @mentions are links to the person's profile, opened here in the pane rather than the browser.
+            return (
+              <Markdown
+                key={`b-${depth}-${c.id}`}
+                text={linkMentions(text)}
+                {...(tagged.length > 0
+                  ? {
+                      pressableLinks: tagged,
+                      onLinkPress: (link: { href: string }) => {
+                        const handle = handleFromHref(link.href)
+                        if (handle) void openProfile($, handle)
+                      },
+                    }
+                  : {})}
+              />
+            )
+          })()}
           {body.isCut && (
             <Box flexDirection="row">
               <Button
@@ -184,7 +214,56 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               </Text>
             </Box>
           )}
-          {c.images > 0 && c.url && <Link href={c.url} label={c.images === 1 ? 'View image' : `View ${c.images} images`} />}
+          {(() => {
+            const first = (c.pictures ?? [])[0]
+            const data = first ? images[first.url] : undefined
+            if (Svg && first && data && data.length <= pictureBudget) {
+              pictureBudget -= data.length
+              const pic = pictureSvg(data, first.width, first.height)
+              return (
+                <Box flexDirection="column" paddingTop={1}>
+                  <Svg source={pic.source} alt={first.alt ?? `Image from @${c.username}`} width={pic.width} height={pic.height} />
+                  {c.images > 1 && c.url && <Link href={c.url} label={`+${c.images - 1} more on dev-null.sh`} />}
+                </Box>
+              )
+            }
+            return c.images > 0 && c.url ? <Link href={c.url} label={c.images === 1 ? 'View image' : `View ${c.images} images`} /> : null
+          })()}
+          {c.preview && (() => {
+            // The link's card, as dev-null.sh shows it: its image (within the picture budget), site, title and description.
+            const card = c.preview
+            const thumb = card.imageUrl ? images[card.imageUrl] : undefined
+            const hasThumb = Boolean(Svg && thumb && thumb.length <= pictureBudget)
+            if (hasThumb && thumb) pictureBudget -= thumb.length
+            const pic = hasThumb && thumb ? pictureSvg(thumb, 120, 90, 120) : undefined
+            return (
+              <Box key={`card-${depth}-${c.id}`} flexDirection="row" columnGap={2} borderStyle="round" borderColor={HAIRLINE} paddingX={1} marginTop={1}>
+                {Svg && pic && (
+                  <Box flexShrink={0}>
+                    <Svg source={pic.source} alt={card.title ?? 'Link preview'} width={pic.width} height={pic.height} />
+                  </Box>
+                )}
+                <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                  {card.site && (
+                    <Text size="footnote" color={MUTED}>
+                      {card.site}
+                    </Text>
+                  )}
+                  {card.title && (
+                    <Text weight="semibold" wrap="truncate-end">
+                      {card.title}
+                    </Text>
+                  )}
+                  {card.description && (
+                    <Text color={MUTED} wrap="truncate-end">
+                      {card.description}
+                    </Text>
+                  )}
+                  <Link href={card.url} label="Open ↗" />
+                </Box>
+              </Box>
+            )
+          })()}
           <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingTop={1}>
             <Box flexDirection="row" columnGap={4}>
               <Button
@@ -217,13 +296,16 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
         <Box key={`n-${n.id}`} flexDirection="row" columnGap={2} paddingY={1}>
           <Box flexShrink={0}>{ring(n.lane, n.actor, 36)}</Box>
           <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-            <Text wrap="wrap">
-              {n.isUnread && <Text color={PRIMARY}>● </Text>}
-              <Text color={n.type === 'starred' ? STAR : n.lane}>{kind?.glyph ?? '•'} </Text>
-              <Text weight="semibold">@{n.actor}</Text>
-              {n.others > 0 ? ` and ${n.others} ${n.others === 1 ? 'other' : 'others'}` : ''} {kind?.verb ?? n.type}
-              <Text color={MUTED}> · {ago(n.createdAt, now)}</Text>
-            </Text>
+            <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1}>
+              {n.isUnread && <Text color={PRIMARY}>●</Text>}
+              <Text color={n.type === 'starred' ? STAR : n.lane}>{kind?.glyph ?? '•'}</Text>
+              <Button key={`actor-${n.id}`} plain label={`@${n.actor}`} onPress={() => openProfile($, n.actor)} />
+              <Text>
+                {n.others > 0 ? `and ${n.others} ${n.others === 1 ? 'other' : 'others'} ` : ''}
+                {kind?.verb ?? n.type}
+                <Text color={MUTED}> · {ago(n.createdAt, now)}</Text>
+              </Text>
+            </Box>
             {n.excerpt && (
               <Text color={MUTED} wrap="truncate-end">
                 {n.excerpt}
@@ -242,6 +324,9 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             <Text bold>{me.streak > 0 ? `🔥 ${me.streak}-day streak` : 'No streak yet'}</Text>
             <Text color={MUTED}> · longest {me.longest}</Text>
           </Text>
+          <Box flexDirection="row">
+            <Button key="my-profile" plain dimColor label={`@${me.username} · your profile`} onPress={() => openProfile($, me.username)} />
+          </Box>
           {(me.rank || me.xp !== undefined) && (
             <Text color={MUTED}>
               {[me.rank, me.level !== undefined ? `level ${me.level}` : '', me.xp !== undefined ? `${me.xp.toLocaleString()}${me.nextLevelXp ? ` / ${me.nextLevelXp.toLocaleString()}` : ''} XP` : '']
@@ -256,6 +341,82 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
         })()}
       </Box>
     )
+
+    // A profile, when one is open, takes the pane's place until Back.
+    if (person) {
+      const v = person.view
+      const counts = v ? [v.commits !== undefined ? `${v.commits} commits` : '', v.followers !== undefined ? `${v.followers} followers` : '', v.following !== undefined ? `${v.following} following` : ''].filter(Boolean) : []
+      const rank = v ? [v.stats.rank, v.stats.level !== undefined ? `level ${v.stats.level}` : '', v.stats.xp !== undefined ? `${v.stats.xp.toLocaleString()} XP` : ''].filter(Boolean) : []
+      return (
+        <Box flexDirection="column">
+          <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingBottom={1}>
+            <Button key="profile-back" plain label="← Back" onPress={() => closeProfile($)} />
+            {v && !v.isMe && (
+              <Button
+                key="profile-follow"
+                variant={v.isFollowing ? 'secondary' : 'primary'}
+                label={person.isFollowBusy ? '…' : v.isFollowing ? 'Following ✓' : 'Follow'}
+                onPress={() => toggleFollow($)}
+              />
+            )}
+          </Box>
+          {person.status === 'loading' && <Text color={MUTED}>Loading @{person.username}…</Text>}
+          {person.status === 'failed' && <Text color={DANGER}>Couldn't load @{person.username}: {person.error}</Text>}
+          {v && (
+            <Box flexDirection="column" rowGap={1} paddingBottom={1}>
+              <Box flexDirection="row" alignItems="center" columnGap={2}>
+                <Box flexShrink={0}>{ring(v.lane, v.username, 64)}</Box>
+                <Box flexDirection="column">
+                  <Text size="title" weight="bold">
+                    {v.name ?? v.username}
+                  </Text>
+                  <Text mono color={MUTED}>
+                    @{v.username}
+                    {v.followsYou ? ' · follows you' : ''}
+                  </Text>
+                </Box>
+              </Box>
+              {v.bio && (() => {
+                const tagged = mentionsIn(v.bio).map(h => MENTION_HREF + h)
+                return (
+                  <Markdown
+                    key={`bio-${v.username}`}
+                    text={linkMentions(v.bio)}
+                    {...(tagged.length > 0
+                      ? {
+                          pressableLinks: tagged,
+                          onLinkPress: (link: { href: string }) => {
+                            const handle = handleFromHref(link.href)
+                            if (handle) void openProfile($, handle)
+                          },
+                        }
+                      : {})}
+                  />
+                )
+              })()}
+              {(v.location || v.website) && (
+                <Box flexDirection="row" columnGap={2}>
+                  {v.location && <Text color={MUTED}>{v.location}</Text>}
+                  {v.website && /^https?:\/\//.test(v.website) && <Link href={v.website} label={v.website.replace(/^https?:\/\//, '')} />}
+                </Box>
+              )}
+              {counts.length > 0 && <Text color={MUTED}>{counts.join(' · ')}</Text>}
+              <Text>
+                <Text weight="semibold">{v.stats.streak > 0 ? `🔥 ${v.stats.streak}-day streak` : 'No streak right now'}</Text>
+                <Text color={MUTED}>{` · longest ${v.stats.longest}${rank.length ? ` · ${rank.join(' · ')}` : ''}`}</Text>
+              </Text>
+              {v.badges.length > 0 && <Text color={MUTED} wrap="wrap">{`Badges: ${v.badges.join(', ')}`}</Text>}
+              {Svg && v.stats.buckets.length > 0 && (() => {
+                const map = heatmapSvg(v.stats, v.lane)
+                return <Svg source={map.source} alt={`@${v.username}'s commits over the last ${v.stats.scale}`} width={map.width} height={map.height} />
+              })()}
+            </Box>
+          )}
+          {v && person.commits.length === 0 && person.status === 'ready' && <Text color={MUTED}>No commits yet.</Text>}
+          {person.commits.slice(0, MAX_DRAWN).map(c => commit(c, 0))}
+        </Box>
+      )
+    }
 
     const isEmpty = showing === 'notifications' ? f.notifications.length === 0 : f.commits.length === 0
     // Only a window of the loaded rows is drawn, so the drawing stays a fixed size however far you scroll.
@@ -322,6 +483,8 @@ export function registerPane(on: On): void {
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     const moved = await next(e)
     if (e.origin.kind !== 'person') return moved
+    // A profile scrolls as one page; the log's window and pull to refresh wait for Back.
+    if (await read($, profile)) return moved
     const now = await $.clock.now()
     if (e.by < 0 && e.offset === 0 && (await read($, windowStart)) > 0) {
       // Deep in the list, the top of the pane is only the top of the drawn window: bring back newer rows.

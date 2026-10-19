@@ -12,6 +12,10 @@ export type CommitRow = {
   stars: number
   replies: number
   images: number
+  // the commit's images: dev-null.sh URLs with their size and alt text
+  pictures: { url: string; width: number; height: number; alt?: string }[]
+  // the card dev-null.sh makes for a commit's first link: page title, description, image, site
+  preview?: { url: string; title?: string; description?: string; site?: string; imageUrl?: string }
   isStarred: boolean
   isSaved: boolean
   url?: string
@@ -88,6 +92,36 @@ export type Stats = {
   fetchedAt: number
 }
 
+// Someone's profile as the pane shows it: GET users/{username}, signed.
+export type ProfileView = {
+  username: string
+  name?: string
+  bio?: string
+  location?: string
+  website?: string
+  avatarUrl?: string
+  lane: string
+  commits?: number
+  followers?: number
+  following?: number
+  isFollowing: boolean
+  followsYou: boolean
+  isMe: boolean
+  stats: Stats
+  // earned badges' names
+  badges: string[]
+}
+
+// The profile open in the pane, if any: the pane shows it in place of the log.
+export type Profile = {
+  username: string
+  status: 'loading' | 'ready' | 'failed'
+  view?: ProfileView
+  commits: CommitRow[]
+  error?: string
+  isFollowBusy?: boolean
+}
+
 // What changed since the pane last loaded: new commits on the shown log, and unread notifications.
 export type Live = { newCount: number; unread: number }
 
@@ -106,6 +140,9 @@ declare module 'claude-code' {
       pull: number
       // index of the first loaded row the pane draws; the desktop drops a drawing that grows too large
       windowStart: number
+      profile: Profile | null
+      // image URL → small JPEG data: URI, fetched once per session, drawn inline within a budget
+      pictures: Record<string, string>
     }
   }
 }

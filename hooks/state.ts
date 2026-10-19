@@ -1,5 +1,5 @@
 // The mod's shared state and look: one place for the atoms every feature reads.
-import type { Compose, Feed, Live, Login, Ship, Stats, Tab } from '../types'
+import type { Compose, Feed, Live, Login, Profile, Ship, Stats, Tab } from '../types'
 
 export const PANE = 'devnull'
 export const TABS: Tab[] = ['following', 'latest', 'trending', 'notifications']
@@ -36,3 +36,8 @@ export const MAX_LOADED = 300
 // Wheel ticks up past the top that refresh the pane, and how near the end a scroll loads the next page.
 export const PULL_TICKS = 4
 export const LOAD_MORE_ROWS = 12
+export const INITIAL_PROFILE = null as Profile | null
+export const INITIAL_PICTURES = {} as Record<string, string>
+// Images are embedded too: each a 260px JPEG of at most 16 KB, and one draw carries at most 45 KB of them.
+export const PICTURE_MAX_CHARS = 16_000
+export const PICTURE_BUDGET_CHARS = 45_000

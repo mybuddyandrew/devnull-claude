@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { FOLLOWING } from './fixture'
 
-import { RAIL, preview, authorizeUrl, avatarSvg, laneColor, parseCallback, patchCommit, query, signingMessage, target, toCommitRow, toNoteRow, unarmor } from './devnull'
+import { authorizeUrl, avatarSvg, laneColor, parseCallback, patchCommit, pictureSvg, preview, query, RAIL, signingMessage, target, toCommitRow, toNoteRow, unarmor } from './devnull'
 
 const PANE = {
   component: 'Pane',
@@ -76,4 +76,25 @@ test('signed in, the feed draws on the desktop', async ($, on) => {
     expect(await ui.find({ key: 'reply-1-reply-1' })).toBeDefined()
     await ui.unmount()
   }
+})
+
+test('commit images are read and framed at their own shape', async () => {
+  const row = toCommitRow({ id: '1', author: { username: 'kim' }, images: [{ url: 'https://dev-null.sh/commit-images/1', width: 616, height: 552, description: null }, { url: 'http://insecure.example/x' }] })
+  expect(row.images).toBe(2)
+  expect(row.pictures).toEqual([{ url: 'https://dev-null.sh/commit-images/1', width: 616, height: 552 }])
+  const pic = pictureSvg('data:image/jpeg;base64,AAAA', 616, 552)
+  expect(pic.width).toBe(260)
+  expect(pic.height).toBe(Math.round((260 * 552) / 616))
+  expect(pic.source).toContain('href="data:image/jpeg;base64,AAAA"')
+})
+
+test('a link preview becomes a card; a pending one is skipped', async () => {
+  const row = toCommitRow({
+    id: '1',
+    author: { username: 'kim' },
+    link_preview: { url: 'https://example.com/@kim/song', title: 'A song', description: 'Listen', image_url: 'https://cdn.example.com/a.jpg', site_name: null, is_pending: false, embed: { provider: 'Suno', kind: 'audio' } },
+  })
+  expect(row.preview).toEqual({ url: 'https://example.com/%40kim/song', title: 'A song', description: 'Listen', site: 'Suno', imageUrl: 'https://cdn.example.com/a.jpg' })
+  expect(toCommitRow({ id: '2', author: {}, link_preview: { url: 'https://example.com', is_pending: true } }).preview).toBeUndefined()
+  expect(toCommitRow({ id: '3', author: {}, link_preview: { url: 'https://www.example.com/x' } }).preview?.site).toBe('example.com')
 })

@@ -6,11 +6,14 @@ import { BASE_URL, NAMESPACE, hex, randomBytes, signingMessage, target, unarmor 
 import {
   AVATAR_MAX_CHARS,
   INITIAL_AVATARS,
+  INITIAL_PICTURES,
   LSREGISTER,
+  PICTURE_MAX_CHARS,
 } from './state'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
 const avatars = atom({ plugin: 'devnull', key: 'avatars' } as const, INITIAL_AVATARS)
+const pictures = atom({ plugin: 'devnull', key: 'pictures' } as const, INITIAL_PICTURES)
 
 export type Paths = { dir: string; key: string; callback: string; app: string }
 
@@ -121,3 +124,25 @@ export async function loadAvatars($: EngineInterface, people: [string, string | 
 }
 
 export const commitPath = (id: string, rest: string) => `commits/${encodeURIComponent(id)}/${rest}`
+
+// Commit images arrive as small JPEG data: URIs (the desktop draws SVG as an image, with no network of its
+// own), at most 260px and 16 KB each, a few at a time; any that fail or run larger are left as links.
+export async function loadPictures($: EngineInterface, urls: readonly string[]): Promise<void> {
+  const have = await read($, pictures)
+  const queue = [...new Set(urls)].filter(u => u.startsWith('https://') && have[u] === undefined)
+  const worker = async () => {
+    for (let url = queue.shift(); url; url = queue.shift()) await fetchPicture(url)
+  }
+  await Promise.all([worker(), worker(), worker()])
+
+  async function fetchPicture(url: string): Promise<void> {
+    try {
+      const script = 't=$(mktemp); curl -sfL --max-time 15 "$1" -o "$t" && sips -s format jpeg -s formatOptions 45 -Z 260 "$t" --out "$t.jpg" >/dev/null 2>&1 && base64 < "$t.jpg"; rm -f "$t" "$t.jpg"'
+      const out = await $.process.run(['/bin/sh', '-c', script, 'sh', url], { timeoutMs: 30_000 })
+      const b64 = out.stdout.replace(/\s+/g, '')
+      // An empty string marks one that failed or ran too large, so it isn't fetched again this session.
+      const value = out.exitCode === 0 && b64 !== '' && b64.length <= PICTURE_MAX_CHARS ? `data:image/jpeg;base64,${b64}` : ''
+      await update($, pictures, p => ({ ...p, [url]: value }))
+    } catch {}
+  }
+}

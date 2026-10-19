@@ -67,3 +67,30 @@ test('/devnull draft sums up the session into the band, focus passed to the mode
   expect(await ui.find({ key: 'ship-post' })).toBeDefined()
   await ui.unmount()
 })
+
+test('/devnull revise has Claude rewrite the waiting draft, which still waits for Post', async ($, on) => {
+  mock.store(on, { username: 'me' })
+  mock.env(on, { HOME: '/tmp/devnull-test' })
+  const asked: string[] = []
+  on('model.fork', async (_$, e) => {
+    asked.push(e.prompt)
+    return { value: { isAnswered: true, text: 'Shorter now.', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
+  })
+  on('classic.SessionStart', async () => ({}))
+  await $.classic.SessionStart({ source: 'startup' })
+
+  const none = await $.command.run(run('revise shorter'))
+  expect(none.text).toContain('No draft is waiting')
+
+  await $.command.run(run('post a long rambling draft about @ada and the pane'))
+  const out = await $.command.run(run('revise shorter, less hype'))
+  expect(out.text).toContain('Revised')
+  expect(asked[0]).toContain('a long rambling draft about @ada')
+  expect(asked[0]).toContain('Rewrite it: shorter, less hype')
+
+  const ui = await $.ui.mount({ plugin: 'devnull', surface: 'desktop', ...BAND })
+  expect(await ui.find({ type: 'Text', text: /Shorter now\./ })).toBeDefined()
+  expect(await ui.find({ key: 'ship-post' })).toBeDefined()
+  expect(await ui.find({ key: 'ship-revise' })).toBeDefined()
+  await ui.unmount()
+})

@@ -109,6 +109,10 @@ export const toCommitRow = (c: Json): CommitRow => {
     stars: num(c.stars_count),
     replies: num(c.replies_count),
     images: list(c.images).length,
+    ...linkPreviewOf(c.link_preview),
+    pictures: list(c.images)
+      .map(i => ({ url: str(i.url) ?? '', width: num(i.width), height: num(i.height), ...(str(i.description) ? { alt: str(i.description) } : {}) }))
+      .filter(p => p.url.startsWith('https://')),
     isStarred: c.starred === true,
     isSaved: c.is_saved === true,
     // The desktop draws a Link only when its href has no raw '@'.
@@ -197,4 +201,91 @@ export const NOTE_KINDS: Record<string, { verb: string; glyph: string }> = {
   followed: { verb: 'followed you', glyph: '+' },
   approved: { verb: 'approved your commit', glyph: '✓' },
   rejected: { verb: 'held back your commit', glyph: '!' },
+}
+
+// @mentions: a handle is a letter or digit then up to 38 of letters, digits, _ or -, as GitHub usernames are.
+// Its link is the person's dev-null.sh profile, the @ written %40 as the desktop's links need.
+export const MENTION_HREF = 'https://dev-null.sh/%40'
+const MENTION = /(^|[^\w/@.])@([A-Za-z0-9][A-Za-z0-9_-]{0,38})(?![\w-])/g
+
+// The handles a text mentions, outside code, each once, in order.
+export const mentionsIn = (text: string): string[] => {
+  const seen = new Set<string>()
+  for (const part of proseParts(text)) for (const m of part.matchAll(MENTION)) seen.add(m[2]!)
+  return [...seen]
+}
+
+// Markdown with each @mention outside code made a link to that person's profile.
+export const linkMentions = (markdown: string): string => {
+  let inFence = false
+  return markdown
+    .split('\n')
+    .map(line => {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence
+        return line
+      }
+      if (inFence) return line
+      // Odd-numbered pieces between backticks are inline code: left as written.
+      return line
+        .split('`')
+        .map((piece, i) => (i % 2 === 1 ? piece : piece.replace(MENTION, (_, before: string, handle: string) => `${before}[@${handle}](${MENTION_HREF}${handle})`)))
+        .join('`')
+    })
+    .join('\n')
+}
+
+// The handle a mention link points at, or undefined for any other link.
+export const handleFromHref = (href: string): string | undefined =>
+  href.startsWith(MENTION_HREF) ? decodeURIComponent(href.slice(MENTION_HREF.length)).replace(/^@/, '') || undefined : undefined
+
+// The text outside fenced and inline code, where a mention can be.
+const proseParts = (text: string): string[] => {
+  let inFence = false
+  return text.split('\n').flatMap(line => {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence
+      return []
+    }
+    return inFence ? [] : line.split('`').filter((_, i) => i % 2 === 0)
+  })
+}
+
+// A commit image drawn inline: its small JPEG in a rounded frame at the image's own shape, at most `max` px wide.
+export const pictureSvg = (dataUri: string, width: number, height: number, max = 260): { source: string; width: number; height: number } => {
+  const w = Math.max(1, Math.min(max, width || max))
+  const h = Math.max(1, Math.round(width && height ? (w * height) / width : w * 0.75))
+  return {
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><clipPath id="p"><rect width="${w}" height="${h}" rx="8"/></clipPath><image href="${dataUri}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice" clip-path="url(#p)"/><rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="8" fill="none" stroke="#2a2a2d"/></svg>`,
+    width: w,
+    height: h,
+  }
+}
+
+// A commit's link preview, once dev-null.sh has fetched it: the card's text and image, the link made safe for
+// the desktop's links (no raw @). A playable embed (a video, a song) is drawn as its card.
+export const linkPreviewOf = (raw: unknown): { preview?: CommitRow['preview'] } => {
+  const p = obj(raw)
+  const url = str(p.url)
+  if (!url || !/^https?:\/\//.test(url) || p.is_pending === true) return {}
+  const embed = obj(p.embed)
+  const image = str(p.image_url) ?? str(embed.poster)
+  const site = str(p.site_name) ?? str(embed.provider) ?? hostOf(url)
+  return {
+    preview: {
+      url: url.replace(/@/g, '%40'),
+      ...(str(p.title) ? { title: str(p.title) } : {}),
+      ...(str(p.description) ? { description: str(p.description) } : {}),
+      ...(site ? { site } : {}),
+      ...(image && image.startsWith('https://') ? { imageUrl: image } : {}),
+    },
+  }
+}
+
+const hostOf = (url: string): string | undefined => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return undefined
+  }
 }

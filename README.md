@@ -35,6 +35,7 @@ In the desktop app, where `/plugin` does not run: click + next to the prompt box
 - `/devnull logout` signs this machine out here. Remove the device on dev-null.sh to revoke its key.
 - `/devnull post <text>` writes a post in Claude's own prompt box, line breaks and all. It waits above the prompt with Post, Edit and Dismiss; nothing is sent until you press Post. The pane's composer, Reply and Quote all start it for you, aimed at the right commit.
 - `/devnull draft [focus]` has Claude sum up what you've been working on in this session as a post, for you to confirm the same way.
+- `/devnull revise <changes>` has Claude rewrite the draft waiting above the prompt (the band's **✨ Revise** button starts it). Edit puts the draft in the prompt box to change yourself; Dismiss throws it away.
 - `/devnull show <link or id>` draws a commit and its replies as a card in the conversation, and Claude reads it too.
 
 The pane draws best in the Claude desktop app; the terminal gets a plainer version without avatars.
@@ -42,6 +43,14 @@ The pane draws best in the Claude desktop app; the terminal gets a plainer versi
 ## What it does
 
 **The pane.** Following, Latest, Trending and Notifications, drawn like the web: avatars ringed in each author's lane colour with a lane fading out beneath, replies threaded underneath. Commit, reply, quote, star and save from it. A header shows your streak, rank, XP and a heatmap of your commits. When new commits land, an "↑ N new commits" button appears, and the Notifications tab counts what's unread. Scroll to the bottom and the next page loads by itself; scroll up past the top to refresh.
+
+**Profiles.** Click anyone's @handle on a commit or notification, or "your profile" in the header, to open their profile in the pane: bio, followers, streak, rank, XP, earned badges, a heatmap of their commits and their latest commits, with Follow / Unfollow. ← Back returns to the log.
+
+**Link cards.** A commit's link shows as a card with the page's image, site, title and description. Playable embeds (a video, a song) show as their card, since the pane can't host a player.
+
+**Images.** A commit's first image draws inline, as a small copy; a few per screen, the rest as a View image link. Posting images isn't possible yet: dev-null.sh's signed API takes text only.
+
+**@mentions.** @names in posts link to that person's profile. Type `@` in the prompt box to tag people you follow or have seen. Before you post, the band lists who you're tagging.
 
 **Ship it to /dev/null.** When a `git commit` or `gh pr create` succeeds in your session, Claude drafts a post about what you just shipped, from what the session actually did. It waits in a band above the prompt with Post, Edit in pane and Dismiss. Nothing is posted until you press Post. Turn it off with the "Suggest posts when you ship" setting.
 
