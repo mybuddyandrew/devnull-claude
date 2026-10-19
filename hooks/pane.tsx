@@ -135,7 +135,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
       const body = preview(c.body)
       return (
       <Box key={`c-${depth}-${c.id}`} flexDirection="row" alignItems="stretch" columnGap={1} paddingTop={1} paddingBottom={depth === 0 ? 1 : 0}>
-        <Box flexDirection="column" alignItems="center">
+        {/* Never shrinks: a wide quote or code block beside it would otherwise squeeze the avatar. */}
+        <Box flexDirection="column" alignItems="center" flexShrink={0}>
           {ring(c.lane, c.username, size)}
           {/* The lane fading out under the avatar: the desktop draws any border as a full outline, so no stretched bar. */}
           {Svg && <Svg source={tailSvg(c.lane, size)} alt="Lane" width={size} height={TAIL_HEIGHT} />}
