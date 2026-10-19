@@ -91,7 +91,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             </Box>
           ))}
         </Box>
-        <Button key="refresh" plain dimColor label={f.isLoading ? 'Loading…' : '↻ Refresh'} onPress={() => refresh($)} />
+        <Button key="refresh" plain dimColor label={f.isLoading ? 'Loading…' : '↻ Refresh'} onPress={() => refreshToTop($)} />
       </Box>
     )
 
@@ -279,7 +279,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               label={`↑ ${fresh.newCount} new ${fresh.newCount === 1 ? 'commit' : 'commits'}`}
               onPress={async () => {
                 await update($, live, (l): Live => ({ ...l, newCount: 0 }))
-                await refresh($)
+                await refreshToTop($)
               }}
             />
           </Box>
@@ -319,12 +319,17 @@ export function registerPane(on: On): void {
     const moved = await next(e)
     if (e.origin.kind !== 'person') return moved
     const now = await $.clock.now()
+    if (e.by < 0 && e.offset === 0 && (await read($, windowStart)) > 0) {
+      // Deep in the list, the top of the pane is only the top of the drawn window: bring back newer rows.
+      await slide($, -1)
+      return moved
+    }
     if (e.by < 0 && e.offset === 0) {
       const ticks = now - lastPullAt > PULL_WINDOW_MS ? 1 : (await read($, pull)) + 1
       lastPullAt = now
       if (ticks >= PULL_TICKS) {
         await update($, pull, () => PULL_TICKS)
-        await refresh($)
+        await refreshToTop($)
         await update($, pull, () => 0)
       } else {
         await update($, pull, () => ticks)
@@ -384,5 +389,13 @@ async function slide($: EngineInterface, direction: 1 | -1): Promise<void> {
 function keepInView($: EngineInterface, key: string, block: 'start' | 'end'): void {
   $.clock.after(120, () => {
     void $.ui.scroll({ to: { key }, in: PANE, block }).catch(() => {})
+  })
+}
+
+// Reloads the shown list from its newest row and puts the pane back at its top.
+async function refreshToTop($: EngineInterface): Promise<void> {
+  await refresh($)
+  $.clock.after(120, () => {
+    void $.ui.scroll({ to: 'start', in: PANE }).catch(() => {})
   })
 }
