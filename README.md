@@ -45,6 +45,8 @@ The pane draws best in the Claude desktop app; the terminal gets a plainer versi
 
 **Profiles.** Click anyone's @handle on a commit or notification, or "your profile" in the header, to open their profile in the pane: bio, followers, streak, rank, XP, earned badges, a heatmap of their commits and their latest commits, with Follow / Unfollow. ← Back returns to the log.
 
+**Images.** A commit's first image draws inline, as a small copy; a few per screen, the rest as a View image link. Posting images isn't possible yet: dev-null.sh's signed API takes text only.
+
 **@mentions.** @names in posts link to that person's profile. Type `@` in the prompt box to tag people you follow or have seen. Before you post, the band lists who you're tagging.
 
 **Ship it to /dev/null.** When a `git commit` or `gh pr create` succeeds in your session, Claude drafts a post about what you just shipped, from what the session actually did. It waits in a band above the prompt with Post, Edit in pane and Dismiss. Nothing is posted until you press Post. Turn it off with the "Suggest posts when you ship" setting.

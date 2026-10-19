@@ -3,7 +3,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderInput } from 'claude-code'
 
 import type { CommitRow, Live } from '../types'
-import { MENTION_HREF, NOTE_KINDS, TAIL_HEIGHT, ago, avatarSvg, handleFromHref, linkMentions, mentionsIn, preview, tailSvg, underlineSvg } from './devnull'
+import { MENTION_HREF, NOTE_KINDS, pictureSvg, TAIL_HEIGHT, ago, avatarSvg, handleFromHref, linkMentions, mentionsIn, preview, tailSvg, underlineSvg } from './devnull'
 import { aim, react, refresh, show, startInPrompt } from './feed'
 import { startLogin, syncLogin } from './login'
 import { closeProfile, openProfile, toggleFollow } from './profile'
@@ -20,7 +20,9 @@ import {
   INITIAL_LOGIN,
   INITIAL_LIVE,
   INITIAL_PULL,
+  INITIAL_PICTURES,
   INITIAL_PROFILE,
+  PICTURE_BUDGET_CHARS,
   INITIAL_WINDOW_START,
   MAX_DRAWN,
   SLIDE_ROWS,
@@ -47,6 +49,7 @@ const live = atom({ plugin: 'devnull', key: 'live' } as const, INITIAL_LIVE)
 const pull = atom({ plugin: 'devnull', key: 'pull' } as const, INITIAL_PULL)
 const windowStart = atom({ plugin: 'devnull', key: 'windowStart' } as const, INITIAL_WINDOW_START)
 const profile = atom({ plugin: 'devnull', key: 'profile' } as const, INITIAL_PROFILE)
+const pictures = atom({ plugin: 'devnull', key: 'pictures' } as const, INITIAL_PICTURES)
 const stats = atom({ plugin: 'devnull', key: 'stats' } as const, INITIAL_STATS)
 
 export async function openPane($: EngineInterface) {
@@ -71,11 +74,14 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     const pulled = await read($, pull)
     const from = await read($, windowStart)
     const person = await read($, profile)
+    const images = await read($, pictures)
     const me = await read($, stats)
     const now = Date.now()
 
     // Photos past the budget fall back to initials, so one draw stays well under what the desktop takes.
     let photoBudget = AVATAR_BUDGET_CHARS
+    // Commit images have a budget of their own; past it, a commit shows a link instead.
+    let pictureBudget = PICTURE_BUDGET_CHARS
     const ring = (lane: string, username: string, size: number) => {
       if (!Svg) return <Text color={lane}>●</Text>
       const face = faces[username]
@@ -208,7 +214,21 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               </Text>
             </Box>
           )}
-          {c.images > 0 && c.url && <Link href={c.url} label={c.images === 1 ? 'View image' : `View ${c.images} images`} />}
+          {(() => {
+            const first = c.pictures[0]
+            const data = first ? images[first.url] : undefined
+            if (Svg && first && data && data.length <= pictureBudget) {
+              pictureBudget -= data.length
+              const pic = pictureSvg(data, first.width, first.height)
+              return (
+                <Box flexDirection="column" paddingTop={1}>
+                  <Svg source={pic.source} alt={first.alt ?? `Image from @${c.username}`} width={pic.width} height={pic.height} />
+                  {c.images > 1 && c.url && <Link href={c.url} label={`+${c.images - 1} more on dev-null.sh`} />}
+                </Box>
+              )
+            }
+            return c.images > 0 && c.url ? <Link href={c.url} label={c.images === 1 ? 'View image' : `View ${c.images} images`} /> : null
+          })()}
           <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingTop={1}>
             <Box flexDirection="row" columnGap={4}>
               <Button

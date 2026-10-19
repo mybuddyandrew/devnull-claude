@@ -109,6 +109,9 @@ export const toCommitRow = (c: Json): CommitRow => {
     stars: num(c.stars_count),
     replies: num(c.replies_count),
     images: list(c.images).length,
+    pictures: list(c.images)
+      .map(i => ({ url: str(i.url) ?? '', width: num(i.width), height: num(i.height), ...(str(i.description) ? { alt: str(i.description) } : {}) }))
+      .filter(p => p.url.startsWith('https://')),
     isStarred: c.starred === true,
     isSaved: c.is_saved === true,
     // The desktop draws a Link only when its href has no raw '@'.
@@ -245,4 +248,15 @@ const proseParts = (text: string): string[] => {
     }
     return inFence ? [] : line.split('`').filter((_, i) => i % 2 === 0)
   })
+}
+
+// A commit image drawn inline: its small JPEG in a rounded frame at the image's own shape, at most `max` px wide.
+export const pictureSvg = (dataUri: string, width: number, height: number, max = 260): { source: string; width: number; height: number } => {
+  const w = Math.max(1, Math.min(max, width || max))
+  const h = Math.max(1, Math.round(width && height ? (w * height) / width : w * 0.75))
+  return {
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><clipPath id="p"><rect width="${w}" height="${h}" rx="8"/></clipPath><image href="${dataUri}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice" clip-path="url(#p)"/><rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="8" fill="none" stroke="#2a2a2d"/></svg>`,
+    width: w,
+    height: h,
+  }
 }

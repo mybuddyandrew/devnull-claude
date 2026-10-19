@@ -3,7 +3,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Profile, ProfileView } from '../types'
-import { api, loadAvatars } from './core'
+import { api, loadAvatars, loadPictures } from './core'
 import { dataList, laneColor, toCommitRow } from './devnull'
 import { INITIAL_PROFILE } from './state'
 import { toStats } from './streaks'
@@ -66,6 +66,7 @@ export async function openProfile($: EngineInterface, username: string): Promise
     await update($, profile, (): Profile | null => ({ username: name, status: 'ready', view, commits }))
     void loadAvatars($, [[view.username, view.avatarUrl], ...commits.flatMap(c => [c, ...c.replyPreview]).map((c): [string, string | undefined] => [c.username, c.avatarUrl])])
     void rememberPeople($, [view.username, ...commits.map(c => c.username)]).catch(() => {})
+    void loadPictures($, commits.flatMap(c => (c.pictures[0] ? [c.pictures[0].url] : []))).catch(() => {})
   } catch (error) {
     if ((await read($, profile))?.username !== name) return
     await update($, profile, (): Profile | null => ({ username: name, status: 'failed', commits: [], error: (error as Error).message }))

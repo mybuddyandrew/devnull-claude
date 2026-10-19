@@ -12,6 +12,8 @@ export type CommitRow = {
   stars: number
   replies: number
   images: number
+  // the commit's images: dev-null.sh URLs with their size and alt text
+  pictures: { url: string; width: number; height: number; alt?: string }[]
   isStarred: boolean
   isSaved: boolean
   url?: string
@@ -137,6 +139,8 @@ declare module 'claude-code' {
       // index of the first loaded row the pane draws; the desktop drops a drawing that grows too large
       windowStart: number
       profile: Profile | null
+      // image URL → small JPEG data: URI, fetched once per session, drawn inline within a budget
+      pictures: Record<string, string>
     }
   }
 }
