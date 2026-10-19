@@ -1,10 +1,11 @@
-// Ship-to-/dev/null: work shipped in this session becomes a ready-to-post draft in the band above the prompt.
+// The post band above the prompt: every post waits here for a Post press. Drafts come from work shipped in
+// this session (git commit, gh pr create), from /devnull draft (a summary of the session), or from
+// /devnull post (text you typed).
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { Ship } from '../types'
-import { draftInComposer, postCommit, refresh } from './feed'
-import { openPane } from './pane'
+import { aim, draftInComposer, postCommit, refresh } from './feed'
 import { DANGER, INITIAL_SHIP, MUTED } from './state'
 
 const ship = atom({ plugin: 'devnull', key: 'ship' } as const, INITIAL_SHIP)
@@ -12,11 +13,9 @@ const ship = atom({ plugin: 'devnull', key: 'ship' } as const, INITIAL_SHIP)
 const POSTED_MS = 8000
 const MAX_CHARS = 4000
 
-const ASK = [
-  'Write ONE post for /dev/null, a small social network for developers, about what I just shipped and why, based on this session.',
-  'Plain text, under 280 characters, first person, casual dev voice, no hashtags, no emojis unless natural, no quotes around it.',
-  'Reply with the post text only.',
-].join(' ')
+const STYLE = 'Plain text, under 280 characters, first person, casual dev voice, no hashtags, no emojis unless natural, no quotes around it. Reply with the post text only.'
+const SHIPPED_ASK = `Write ONE post for /dev/null, a small social network for developers, about what I just shipped and why, based on this session. ${STYLE}`
+const SESSION_ASK = `Write ONE post for /dev/null, a small social network for developers, summing up what I've been working on in this session: what it is and what's interesting about it. ${STYLE}`
 
 // What the post link points at, for the "Posted" line; cosmetic, so a hot reload may drop it.
 let postedUrl: string | undefined
@@ -42,11 +41,11 @@ async function sourceOf($: EngineInterface, command: string, ran: { text?: strin
   return undefined
 }
 
-async function draft($: EngineInterface, source: string): Promise<void> {
+// Asks the model for a draft: a question over this session's conversation, or a small model on the prompt alone.
+async function draft($: EngineInterface, kind: 'ship' | 'session', source: string, prompt: string): Promise<void> {
   const now = await read($, ship)
-  if (now.status === 'drafting' || now.status === 'posting' || (now.status === 'ready' && now.source === source)) return
-  await update($, ship, (s): Ship => ({ status: 'drafting', source, round: s.round }))
-  const prompt = `${ASK}\n\nWhat I shipped: ${source}`
+  if (now.status === 'drafting' || now.status === 'posting' || (now.status === 'ready' && now.source === source && now.kind === kind)) return
+  await update($, ship, (s): Ship => ({ status: 'drafting', kind, source, round: s.round }))
   let text: string | undefined
   let reason = 'no reply'
   try {
@@ -65,11 +64,23 @@ async function draft($: EngineInterface, source: string): Promise<void> {
       reason = `${reason}; ${(error as Error).message}`
     }
   }
-  // A dismissal or a newer ship while the model worked wins.
+  // A dismissal or a newer draft while the model worked wins.
   const after = await read($, ship)
   if (after.status !== 'drafting' || after.source !== source) return
-  if (!text) await update($, ship, (s): Ship => ({ status: 'failed', source, error: `Could not draft a post (${reason})`, round: s.round }))
-  else await update($, ship, (s): Ship => ({ status: 'ready', source, draft: text, round: s.round }))
+  if (!text) await update($, ship, (s): Ship => ({ status: 'failed', kind, source, error: `Could not draft a post (${reason})`, round: s.round }))
+  else await update($, ship, (s): Ship => ({ status: 'ready', kind, source, draft: text, round: s.round }))
+}
+
+// /devnull draft [hint]: Claude sums up this session as a post, for you to confirm in the band.
+export async function draftFromSession($: EngineInterface, hint: string): Promise<void> {
+  const focus = hint.trim()
+  await draft($, 'session', focus ? `this session: ${focus}` : 'this session', focus ? `${SESSION_ASK}\n\nFocus on: ${focus}` : SESSION_ASK)
+}
+
+// /devnull post <text>: text you typed, offered in the band; nothing is posted until you press Post.
+export async function offerPost($: EngineInterface, text: string, to?: Ship['to']): Promise<void> {
+  const source = to ? `${to.mode === 'reply' ? 'Reply to' : 'Quote of'} @${to.handle ?? 'commit'}` : 'Your post'
+  await update($, ship, (s): Ship => ({ status: 'ready', kind: 'typed', source, draft: text.slice(0, MAX_CHARS), round: s.round + 1, ...(to ? { to } : {}) }))
 }
 
 async function dismiss($: EngineInterface): Promise<void> {
@@ -83,26 +94,33 @@ async function post($: EngineInterface): Promise<void> {
   const now = await read($, ship)
   if (now.status !== 'ready' || !now.draft) return
   const body = now.draft
+  const to = now.to
   await update($, ship, (s): Ship => ({ ...s, status: 'posting', error: undefined }))
   try {
-    const row = await postCommit($, body)
+    const row = await postCommit($, body, {
+      parentId: to?.mode === 'reply' ? to.id : undefined,
+      quotedId: to?.mode === 'quote' ? to.id : undefined,
+    })
     postedUrl = row.url
-    await update($, ship, (s): Ship => ({ status: 'posted', source: s.source, round: s.round + 1 }))
-    await $.ui.toast('/dev/null: posted')
+    await update($, ship, (s): Ship => ({ status: 'posted', kind: s.kind, source: s.source, round: s.round + 1 }))
+    // The reply or quote is done: the composer goes back to a new commit.
+    if (to) await aim($, 'new')
+    $.ui.toast(to?.mode === 'reply' ? '/dev/null: replied' : to?.mode === 'quote' ? '/dev/null: quoted' : '/dev/null: posted')
     $.audio.play({ asset: 'assets/shipped.wav' }).catch(() => {})
     postedTimer?.cancel()
     postedTimer = $.clock.after(POSTED_MS, () => void dismiss($))
-    void refresh($)
+    void refresh($).catch(() => {})
   } catch (error) {
-    await update($, ship, (s): Ship => ({ status: 'failed', source: s.source, draft: body, error: (error as Error).message, round: s.round }))
+    await update($, ship, (s): Ship => ({ ...s, status: 'failed', draft: body, error: (error as Error).message }))
   }
 }
 
+// Sends the draft back to the prompt box as /devnull post <draft>, aimed where it was, to change and send again.
 async function edit($: EngineInterface): Promise<void> {
   const now = await read($, ship)
   if (!now.draft) return
-  await draftInComposer($, now.draft)
-  await openPane($)
+  const to = now.to
+  await draftInComposer($, now.draft, to ? { mode: to.mode, targetId: to.id, targetHandle: to.handle } : {})
   await dismiss($)
 }
 
@@ -119,7 +137,7 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
       try {
         if (!(await $.store.get('username'))) return
         const source = await sourceOf($, command, ran)
-        if (source) await draft($, source)
+        if (source) await draft($, 'ship', source, `${SHIPPED_ASK}\n\nWhat I shipped: ${source}`)
       } catch {
         // A post draft is a nicety: never let it surface as a tool error.
       }
@@ -132,6 +150,7 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
     if (s.status === 'idle') return next(e)
     const { Box, Text, Button, Link } = $.ui.resolve(e)
     const source = s.source ? s.source.slice(0, 80) : ''
+    const question = s.kind === 'typed' ? (s.to ? `${source}?` : 'Post this to /dev/null?') : s.kind === 'session' ? 'Post this to /dev/null?' : 'Ship it to /dev/null?'
 
     const dismissButton = <Button key="ship-dismiss" plain dimColor label="Dismiss" onPress={() => dismiss($)} />
 
@@ -151,17 +170,20 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
       body = (
         <Box flexDirection="column">
           <Text color={DANGER}>{s.error ?? 'Could not post'}</Text>
-          <Box flexDirection="row">{dismissButton}</Box>
+          <Box flexDirection="row" columnGap={2}>
+            {s.draft ? <Button key="ship-edit" label="Edit" onPress={() => edit($)} /> : null}
+            {dismissButton}
+          </Box>
         </Box>
       )
     } else {
       body = (
         <Box flexDirection="column">
-          <Text>Ship it to /dev/null?</Text>
-          <Text color={MUTED}>{source}</Text>
+          <Text weight="semibold">{question}</Text>
+          {s.kind !== 'typed' && source ? <Text color={MUTED}>{source}</Text> : null}
           <Text>{s.draft ?? ''}</Text>
-          <Box flexDirection="row" columnGap={2}>
-            <Button key="ship-post" variant="primary" hotkey="p" label="Post" onPress={() => post($)} />
+          <Box flexDirection="row" columnGap={2} paddingTop={1}>
+            <Button key="ship-post" variant="primary" hotkey="p" label={s.to?.mode === 'reply' ? 'Reply' : s.to?.mode === 'quote' ? 'Quote' : 'Post'} onPress={() => post($)} />
             <Button key="ship-edit" label="Edit" onPress={() => edit($)} />
             {dismissButton}
           </Box>

@@ -68,6 +68,10 @@ export type Ship = {
   error?: string
   // bumped after each post or dismissal so the band's field draws fresh
   round: number
+  // where the draft came from: work shipped (git commit, gh pr create), typed with /devnull post, or /devnull draft
+  kind?: 'ship' | 'typed' | 'session'
+  // a reply or quote target for the post
+  to?: { mode: 'reply' | 'quote'; id: string; handle?: string }
 }
 
 // The signed-in user's profile stats from GET users/{me}.

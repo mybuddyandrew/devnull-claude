@@ -1,9 +1,9 @@
 import type { Register } from 'claude-code'
 
 import { finish, logout, poll, startLogin, syncLogin, type Pending } from './login'
-import { postFromPrompt } from './feed'
+import { offerFromPrompt } from './feed'
 import { openPane, registerPane } from './pane'
-import { registerShip } from './ship'
+import { draftFromSession, registerShip } from './ship'
 import { registerStreaks, startStreaks } from './streaks'
 import { registerTools, startTools } from './tools'
 import { loadFollowing, registerTranscript, showCommit } from './transcript'
@@ -14,7 +14,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'devnull',
       description: 'Open the /dev/null pane (log + notifications)',
-      argumentHint: '[post <text> | show <link> | login | logout]',
+      argumentHint: '[post <text> | draft [focus] | show <link> | login | logout]',
     })
     await syncLogin($)
     // The people you follow seed @ completion; in the background, so startup never waits on dev-null.sh.
@@ -30,7 +30,12 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'devnull' }, async ($, e) => {
     const [sub = '', ...rest] = e.args.trim().split(/\s+/)
     // The post's own text, line breaks kept: everything after the word "post".
-    if (sub === 'post') return { text: await postFromPrompt($, e.args.trim().slice('post'.length).trim()) }
+    if (sub === 'post') return { text: await offerFromPrompt($, e.args.trim().slice('post'.length).trim()) }
+    if (sub === 'draft') {
+      if (!(await $.store.get('username'))) return { text: 'Not signed in to /dev/null. Run /devnull login first.' }
+      void draftFromSession($, e.args.trim().slice('draft'.length))
+      return { text: 'Drafting a post about this session. It appears above the prompt to confirm.' }
+    }
     if (sub === 'login') {
       await $.ui.open({ id: PANE, title: '/dev/null' })
       return { text: rest[0] ? await finish($, rest.join('')) : await startLogin($) }
