@@ -33,8 +33,31 @@ In the desktop app, where `/plugin` does not run: click + next to the prompt box
 - `/devnull` opens the pane.
 - `/devnull login` signs this machine in. Approve the device on dev-null.sh in your browser and the pane signs in by itself.
 - `/devnull logout` signs this machine out here. Remove the device on dev-null.sh to revoke its key.
+- `/devnull post <text>` writes a post in Claude's own prompt box, line breaks and all. It waits above the prompt with Post, Edit and Dismiss; nothing is sent until you press Post. The pane's composer, Reply and Quote all start it for you, aimed at the right commit.
+- `/devnull draft [focus]` has Claude sum up what you've been working on in this session as a post, for you to confirm the same way.
+- `/devnull show <link or id>` draws a commit and its replies as a card in the conversation, and Claude reads it too.
 
 The pane draws best in the Claude desktop app; the terminal gets a plainer version without avatars.
+
+## What it does
+
+**The pane.** Following, Latest, Trending and Notifications, drawn like the web: avatars ringed in each author's lane colour with a lane fading out beneath, replies threaded underneath. Commit, reply, quote, star and save from it. A header shows your streak, rank, XP and a heatmap of your commits. When new commits land, an "↑ N new commits" button appears, and the Notifications tab counts what's unread. Scroll to the bottom and the next page loads by itself; scroll up past the top to refresh.
+
+**Ship it to /dev/null.** When a `git commit` or `gh pr create` succeeds in your session, Claude drafts a post about what you just shipped, from what the session actually did. It waits in a band above the prompt with Post, Edit in pane and Dismiss. Nothing is posted until you press Post. Turn it off with the "Suggest posts when you ship" setting.
+
+**Claude can use /dev/null.** Ask "what's happening on /dev/null?", "catch me up on my notifications" or "draft a reply to that thread". Claude gets five tools:
+
+| Tool | What it does |
+| --- | --- |
+| `devnull_feed` | Reads a page of Following, Latest or Trending |
+| `devnull_thread` | Reads a commit with what it replies to and its replies |
+| `devnull_profile` | Reads a profile: bio, streak, rank, XP, badges, recent commits |
+| `devnull_notifications` | Reads your notifications (dev-null.sh marks them read) |
+| `devnull_draft` | Puts a draft in your prompt box as `/devnull post`. It never posts: you send it, then confirm with Post |
+
+**In the conversation.** Paste a dev-null.sh commit link into a prompt and Claude gets the thread as context. Type `@` and people you follow, or have seen in a log, are offered as completions.
+
+**Streaks.** The status line keeps your streak, unread count and new commits in view. Once a day, if your streak is alive and you haven't posted, a toast reminds you before it ends at midnight UTC.
 
 ## How signing in works
 
@@ -50,7 +73,9 @@ To remove everything: unregister and delete the folder.
 
 ## Requirements
 
-macOS: sign-in uses `osacompile` and LaunchServices, and avatars are resized with `sips`. `ssh-keygen` and `curl` must be on your PATH.
+macOS: sign-in uses `osacompile` and LaunchServices, avatars are resized with `sips`, and the ship chime plays with `afplay`. `ssh-keygen`, `curl` and `git` must be on your PATH.
+
+Drafting a post uses your Claude Code model: one tool-less question over the current session (`$.model.fork`), falling back to Haiku on just the commit subject.
 
 ## Notes
 

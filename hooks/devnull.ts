@@ -158,7 +158,7 @@ export const avatarSvg = (lane: string, size: number, dataUri?: string, initial 
 }
 
 // The lane's tail under an avatar, fading out: the graph's colour without a row-tall rail.
-export const TAIL_HEIGHT = 28
+export const TAIL_HEIGHT = 44
 export const tailSvg = (lane: string, width: number): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${TAIL_HEIGHT}" viewBox="0 0 ${width} ${TAIL_HEIGHT}"><defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${lane}"/><stop offset="1" stop-color="${lane}" stop-opacity="0"/></linearGradient></defs><rect x="${width / 2 - 1}" y="0" width="2" height="${TAIL_HEIGHT}" fill="url(#t)"/></svg>`
 
@@ -190,9 +190,11 @@ export const ago = (iso: string | undefined, nowMs: number): string => {
 
 // How a notification reads after the actor's name, and the glyph beside it.
 export const NOTE_KINDS: Record<string, { verb: string; glyph: string }> = {
-  reply: { verb: 'replied to your commit', glyph: '↩' },
-  quote: { verb: 'quoted your commit', glyph: '❝' },
-  star: { verb: 'starred your commit', glyph: '★' },
-  mention: { verb: 'mentioned you', glyph: '@' },
-  follow: { verb: 'followed you', glyph: '+' },
+  replied: { verb: 'replied to your commit', glyph: '↩' },
+  quoted: { verb: 'quoted your commit', glyph: '❝' },
+  starred: { verb: 'starred your commit', glyph: '★' },
+  mentioned: { verb: 'mentioned you', glyph: '@' },
+  followed: { verb: 'followed you', glyph: '+' },
+  approved: { verb: 'approved your commit', glyph: '✓' },
+  rejected: { verb: 'held back your commit', glyph: '!' },
 }
