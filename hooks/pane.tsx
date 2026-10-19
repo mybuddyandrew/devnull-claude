@@ -130,9 +130,9 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             plain
             dimColor
             label={draft.mode === 'reply' ? 'Write your reply…' : draft.mode === 'quote' ? 'Add your take…' : "What's on your mind?"}
-            onPress={() => startInPrompt($)}
+            onPress={() => composeInPrompt($)}
           />
-          <Button key="compose-go" variant="primary" label={draft.mode === 'reply' ? 'Reply' : draft.mode === 'quote' ? 'Quote' : 'Commit'} onPress={() => startInPrompt($)} />
+          <Button key="compose-go" variant="primary" label={draft.mode === 'reply' ? 'Reply' : draft.mode === 'quote' ? 'Quote' : 'Commit'} onPress={() => composeInPrompt($)} />
         </Box>
         {draft.error && <Text color={DANGER}>Not sent: {draft.error}</Text>}
       </Box>
@@ -194,8 +194,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
                 label={`${c.isStarred ? '★' : '☆'}${c.stars > 0 ? ` ${c.stars}` : ''}`}
                 onPress={() => react($, c, 'star')}
               />
-              {depth === 0 && <Button key={`quote-${c.id}`} plain dimColor label="❝ Quote" onPress={() => aim($, 'quote', c)} />}
-              <Button key={`reply-${depth}-${c.id}`} plain dimColor label={`↩ Reply${c.replies > 0 ? ` ${c.replies}` : ''}`} onPress={() => aim($, 'reply', c)} />
+              {depth === 0 && <Button key={`quote-${c.id}`} plain dimColor label="❝ Quote" onPress={() => composeInPrompt($, 'quote', c)} />}
+              <Button key={`reply-${depth}-${c.id}`} plain dimColor label={`↩ Reply${c.replies > 0 ? ` ${c.replies}` : ''}`} onPress={() => composeInPrompt($, 'reply', c)} />
             </Box>
             <Button
               key={`save-${depth}-${c.id}`}
@@ -402,4 +402,11 @@ async function refreshToTop($: EngineInterface): Promise<void> {
   $.clock.after(120, () => {
     void $.ui.scroll({ to: 'start', in: PANE }).catch(() => {})
   })
+}
+
+// Starts a post in Claude's prompt box from a press in the pane. No mods API can focus the prompt box, and
+// closing the pane doesn't hand it focus on the desktop either, so the person clicks it to type.
+async function composeInPrompt($: EngineInterface, mode: 'new' | 'reply' | 'quote' = 'new', row?: CommitRow): Promise<void> {
+  if (mode === 'new') await startInPrompt($)
+  else await aim($, mode, row)
 }
