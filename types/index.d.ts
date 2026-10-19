@@ -100,6 +100,8 @@ declare module 'claude-code' {
       people: string[]
       // wheel ticks upward while the pane is already at its top: pull to refresh
       pull: number
+      // index of the first loaded row the pane draws; the desktop drops a drawing that grows too large
+      windowStart: number
     }
   }
 }

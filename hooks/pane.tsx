@@ -19,6 +19,9 @@ import {
   INITIAL_LOGIN,
   INITIAL_LIVE,
   INITIAL_PULL,
+  INITIAL_WINDOW_START,
+  MAX_DRAWN,
+  SLIDE_ROWS,
   LOAD_MORE_ROWS,
   PULL_TICKS,
   INITIAL_STATS,
@@ -40,6 +43,7 @@ const login = atom({ plugin: 'devnull', key: 'login' } as const, INITIAL_LOGIN)
 const tab = atom({ plugin: 'devnull', key: 'tab' } as const, INITIAL_TAB)
 const live = atom({ plugin: 'devnull', key: 'live' } as const, INITIAL_LIVE)
 const pull = atom({ plugin: 'devnull', key: 'pull' } as const, INITIAL_PULL)
+const windowStart = atom({ plugin: 'devnull', key: 'windowStart' } as const, INITIAL_WINDOW_START)
 const stats = atom({ plugin: 'devnull', key: 'stats' } as const, INITIAL_STATS)
 
 export async function openPane($: EngineInterface) {
@@ -63,6 +67,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     const open = await read($, expanded)
     const fresh = await read($, live)
     const pulled = await read($, pull)
+    const from = await read($, windowStart)
     const me = await read($, stats)
     const now = Date.now()
 
@@ -245,6 +250,10 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     )
 
     const isEmpty = showing === 'notifications' ? f.notifications.length === 0 : f.commits.length === 0
+    // Only a window of the loaded rows is drawn, so the drawing stays a fixed size however far you scroll.
+    const rows: readonly { id: string }[] = showing === 'notifications' ? f.notifications : f.commits
+    const start = Math.max(0, Math.min(from, rows.length - MAX_DRAWN))
+    const drawn = rows.slice(start, start + MAX_DRAWN)
     const showNew = fresh.newCount > 0 && (showing === 'following' || showing === 'latest')
     return (
       <Box flexDirection="column">
@@ -277,10 +286,15 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             {showing === 'notifications' ? 'No notifications yet.' : showing === 'following' ? 'Nobody you follow has committed yet. Try Latest.' : 'Nothing here yet.'}
           </Text>
         )}
-        {showing === 'notifications' ? f.notifications.map(note) : f.commits.map(c => commit(c, 0))}
-        {f.nextCursor && !isEmpty && (
+        {start > 0 && (
+          <Box flexDirection="row" justifyContent="center" paddingBottom={1}>
+            <Button key="newer" label={`↑ Newer ${showing === 'notifications' ? 'notifications' : 'commits'}`} onPress={() => slide($, -1)} />
+          </Box>
+        )}
+        {showing === 'notifications' ? (drawn as typeof f.notifications).map(note) : (drawn as CommitRow[]).map(c => commit(c, 0))}
+        {(start + MAX_DRAWN < rows.length || f.nextCursor) && !isEmpty && (
           <Box flexDirection="row" justifyContent="center" paddingY={1}>
-            {f.isLoading ? <Text color={MUTED}>Loading more…</Text> : <Button key="more" label="Load more" onPress={() => refresh($, true)} />}
+            {f.isLoading ? <Text color={MUTED}>Loading more…</Text> : <Button key="more" label="Load more" onPress={() => slide($, 1)} />}
           </Box>
         )}
       </Box>
@@ -321,7 +335,7 @@ export function registerPane(on: On): void {
     if (e.by > 0) {
       if ((await read($, pull)) > 0) await update($, pull, () => 0)
       const f = await read($, feed)
-      if (f.nextCursor && !f.isLoading && e.offset + e.bodyRows >= e.contentRows - LOAD_MORE_ROWS) void refresh($, true)
+      if (!f.isLoading && e.offset + e.bodyRows >= e.contentRows - LOAD_MORE_ROWS) void slide($, 1)
     }
     return moved
   })
@@ -330,3 +344,41 @@ export function registerPane(on: On): void {
 // Pull ticks further apart than this start over.
 const PULL_WINDOW_MS = 1500
 let lastPullAt = 0
+
+// The key each drawn row's Box carries, for scrolling a row back into view after the window moves.
+const rowKey = (isNote: boolean, id: string) => (isNote ? `n-${id}` : `c-0-${id}`)
+
+// Moves the drawn window a step down the list (1) or back up (-1), loading the next page when the
+// window reaches the end of what's loaded. The row that was at the window's edge is scrolled back
+// to the same edge, so the view doesn't jump when rows leave the other end.
+async function slide($: EngineInterface, direction: 1 | -1): Promise<void> {
+  const isNote = (await read($, tab)) === 'notifications'
+  let f = await read($, feed)
+  const list = () => (isNote ? f.notifications : f.commits) as readonly { id: string }[]
+  const from = Math.max(0, Math.min(await read($, windowStart), list().length - MAX_DRAWN))
+  if (direction === 1) {
+    if (from + MAX_DRAWN >= list().length) {
+      if (!f.nextCursor || f.isLoading) return
+      await refresh($, true)
+      f = await read($, feed)
+      // The first page or two fit whole; the window only slides once there's more than it draws.
+      if (list().length <= MAX_DRAWN) return
+    }
+    const anchor = list()[Math.min(from + MAX_DRAWN, list().length) - 1]?.id
+    const next = Math.min(from + SLIDE_ROWS, Math.max(0, list().length - MAX_DRAWN))
+    if (next === from) return
+    await update($, windowStart, () => next)
+    if (anchor) keepInView($, rowKey(isNote, anchor), 'end')
+  } else {
+    const anchor = list()[from]?.id
+    await update($, windowStart, () => Math.max(0, from - SLIDE_ROWS))
+    if (anchor) keepInView($, rowKey(isNote, anchor), 'start')
+  }
+}
+
+// After the redraw lands, scroll the anchor row back to the edge it was on.
+function keepInView($: EngineInterface, key: string, block: 'start' | 'end'): void {
+  $.clock.after(120, () => {
+    void $.ui.scroll({ to: { key }, in: PANE, block }).catch(() => {})
+  })
+}

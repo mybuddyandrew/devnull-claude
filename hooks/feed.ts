@@ -10,29 +10,34 @@ import {
   INITIAL_COMPOSE,
   INITIAL_FEED,
   INITIAL_TAB,
+  INITIAL_WINDOW_START,
+  MAX_LOADED,
 } from './state'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
 const compose = atom({ plugin: 'devnull', key: 'compose' } as const, INITIAL_COMPOSE)
 const feed = atom({ plugin: 'devnull', key: 'feed' } as const, INITIAL_FEED)
 const tab = atom({ plugin: 'devnull', key: 'tab' } as const, INITIAL_TAB)
+const windowStart = atom({ plugin: 'devnull', key: 'windowStart' } as const, INITIAL_WINDOW_START)
 
 export async function refresh($: EngineInterface, more = false): Promise<void> {
   const showing = await read($, tab)
   if (!(await $.store.get('username'))) return
   const cursor = more ? (await read($, feed)).nextCursor : undefined
+  // A fresh load starts drawing from the top again.
+  if (!more) await update($, windowStart, () => 0)
   await update($, feed, f => ({ ...f, isLoading: true, error: undefined }))
   try {
     if (showing === 'notifications') {
       // Listing notifications marks them read on dev-null.sh, as the web does.
       const json = await api($, 'GET', 'notifications', { cursor })
       const rows = dataList(json).map(toNoteRow)
-      await update($, feed, f => ({ ...f, isLoading: false, notifications: more ? [...f.notifications, ...rows] : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
+      await update($, feed, f => ({ ...f, isLoading: false, notifications: more ? [...f.notifications, ...rows].slice(0, MAX_LOADED) : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
       void loadAvatars($, rows.map(r => [r.actor, r.avatarUrl]))
     } else {
       const json = await api($, 'GET', `log/${showing}`, { cursor })
       const rows = dataList(json).map(toCommitRow)
-      await update($, feed, f => ({ ...f, isLoading: false, commits: more ? [...f.commits, ...rows] : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
+      await update($, feed, f => ({ ...f, isLoading: false, commits: more ? [...f.commits, ...rows].slice(0, MAX_LOADED) : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
       const people = rows.flatMap(r => [r, ...r.replyPreview, ...(r.quoted ? [r.quoted] : [])])
       void loadAvatars($, people.map(r => [r.username, r.avatarUrl]))
       // Everyone seen in a log becomes an @ completion.
