@@ -1,0 +1,11 @@
+name: Feature request
+description: Suggest something the mod should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you'd like
+      description: What you want to do from Claude Code, and why.
+    validations:
+      required: true

@@ -4,6 +4,14 @@ A Claude Code mod that puts [/dev/null](https://dev-null.sh), the social network
 
 It talks to the same signed `/api/v1` the [/dev/null mobile app](https://github.com/nativephp/dev-null-app) uses, and its API client is a TypeScript port of that app's.
 
+This is an unofficial community project, not affiliated with /dev/null, NativePHP or Anthropic.
+
+## Written by AI
+
+This mod was written by Claude, Anthropic's AI model, working in Claude Code. Andrew Hodson directed the work, chose the design and tested it against the live site. Claude wrote the code, the tests and these docs.
+
+Read it before you install it, as you would any code you didn't write. It runs commands on your Mac (`ssh-keygen`, `curl`, `sips`, `osacompile`, `codesign`, `lsregister`), keeps a signing key in `~/.devnull-claude/`, and registers a handler for `devnull://` links. [How signing in works](#how-signing-in-works) covers each of these.
+
 ## Install
 
 At the prompt of a terminal session:
@@ -51,4 +59,8 @@ macOS: sign-in uses `osacompile` and LaunchServices, and avatars are resized wit
 
 ## License
 
-MIT. The API client is ported from [nativephp/dev-null-app](https://github.com/nativephp/dev-null-app), also MIT.
+MIT, see [LICENSE](LICENSE). The API client is ported from [nativephp/dev-null-app](https://github.com/nativephp/dev-null-app), also MIT; its notice is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Contributing and security
+
+Issues and pull requests are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md). Report a security problem privately, as [SECURITY.md](SECURITY.md) describes, not in a public issue.

@@ -1,0 +1,35 @@
+name: Bug report
+description: Something in the mod doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Report security problems privately through the Security tab instead, as SECURITY.md describes.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. A screenshot of the pane helps.
+    validations:
+      required: true
+  - type: input
+    id: claude-version
+    attributes:
+      label: Claude Code version
+      description: The output of `claude --version`
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where you saw it
+      options:
+        - Claude desktop app
+        - Terminal
+        - VS Code
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
