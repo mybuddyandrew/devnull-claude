@@ -93,7 +93,16 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
 
     // Loaders: skeleton rows the first time a list loads, a sweeping bar while one refreshes over what's
     // shown, and a spinner beside a button. Text stands in where a surface draws no SVG.
-    const loaderWidth = Math.min(640, Math.max(240, ((e.props as { bodyColumns?: number }).bodyColumns ?? 60) * 8))
+    // The pane's width in pixels, from its width in cells (about 7.5px each on the desktop). Every drawing is
+    // sized to it, so a narrow docked pane scales its drawings down instead of cutting the content off.
+    const paneWidth = Math.max(140, Math.floor(((e.props as { bodyColumns?: number }).bodyColumns ?? 60) * 7.5) - 16)
+    // A commit's content sits beside its avatar gutter, so it has a little less room.
+    const contentWidth = Math.max(100, paneWidth - 64)
+    const fit = (map: { width: number; height: number }, room: number) => {
+      const width = Math.min(map.width, room)
+      return { width, height: Math.max(1, Math.round((map.height * width) / map.width)) }
+    }
+    const loaderWidth = Math.min(640, paneWidth)
     const skeletons = (n: number, avatar = 40) =>
       Svg
         ? Array.from({ length: n }, (_, i) => {
@@ -136,8 +145,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     }
 
     const tabs = (
-      <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingBottom={1}>
-        <Box flexDirection="row" columnGap={3}>
+      <Box flexDirection="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap={1} paddingBottom={1}>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={3}>
           {/* Remotes only shows once dev-null.sh serves it and you have it switched on. */}
           {TABS.filter(t => t !== 'remotes' || fresh.remotesOn || showing === 'remotes').map(t => (
             <Box key={`tabbox-${t}`} flexDirection="column" alignItems="center" rowGap={0}>
@@ -181,7 +190,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             <Button key="compose-cancel" plain dimColor label="Cancel" onPress={() => void aim($, 'new')} />
           </Box>
         )}
-        <Box flexDirection="row" justifyContent="space-between" alignItems="center" columnGap={2}>
+        <Box flexDirection="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" columnGap={2} rowGap={1}>
           {Input ? (
             <Input
               key={`compose-${draft.round}`}
@@ -218,8 +227,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
           {Svg && <Svg source={tailSvg(c.lane, size)} alt="Lane" width={size} height={TAIL_HEIGHT} />}
         </Box>
         <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-          <Box flexDirection="row" justifyContent="space-between" alignItems="center" columnGap={1}>
-            <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1}>
+          <Box flexDirection="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" columnGap={1}>
+            <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1} flexShrink={1}>
               <Text size={depth === 0 ? 'heading' : 'body'} weight="semibold" wrap="truncate-end">
                 {c.name ?? c.username}
               </Text>
@@ -276,7 +285,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             const data = first ? images[first.url] : undefined
             if (Svg && first && data && data.length <= pictureBudget) {
               pictureBudget -= data.length
-              const pic = pictureSvg(data, first.width, first.height)
+              const pic = pictureSvg(data, first.width, first.height, Math.min(260, contentWidth))
               return (
                 <Box flexDirection="column" paddingTop={1}>
                   <Svg source={pic.source} alt={first.alt ?? `Image from @${c.username}`} width={pic.width} height={pic.height} />
@@ -290,7 +299,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             // The link's card, as dev-null.sh shows it: its image (within the picture budget), site, title and description.
             const card = c.preview
             const thumb = card.imageUrl ? images[card.imageUrl] : undefined
-            const hasThumb = Boolean(Svg && thumb && thumb.length <= pictureBudget)
+            const hasThumb = Boolean(Svg && thumb && thumb.length <= pictureBudget && contentWidth >= 260)
             if (hasThumb && thumb) pictureBudget -= thumb.length
             const pic = hasThumb && thumb ? pictureSvg(thumb, 120, 90, 120) : undefined
             return (
@@ -321,8 +330,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               </Box>
             )
           })()}
-          <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingTop={1}>
-            <Box flexDirection="row" columnGap={4}>
+          <Box flexDirection="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap={1} paddingTop={1}>
+            <Box flexDirection="row" flexWrap="wrap" columnGap={3}>
               <Button
                 key={`star-${depth}-${c.id}`}
                 plain
@@ -414,7 +423,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
         </Box>
         {Svg && me.buckets.length > 0 && (() => {
           const map = heatmapSvg(me, PRIMARY)
-          return <Svg source={map.source} alt={`Your commits over the last ${me.scale}`} width={map.width} height={map.height} />
+          const size = fit(map, paneWidth)
+          return <Svg source={map.source} alt={`Your commits over the last ${me.scale}`} width={size.width} height={size.height} />
         })()}
       </Box>
     )
@@ -639,7 +649,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               {v.badges.length > 0 && <Text color={MUTED} wrap="wrap">{`Badges: ${v.badges.join(', ')}`}</Text>}
               {Svg && v.stats.buckets.length > 0 && (() => {
                 const map = heatmapSvg(v.stats, v.lane)
-                return <Svg source={map.source} alt={`@${v.username}'s commits over the last ${v.stats.scale}`} width={map.width} height={map.height} />
+                const size = fit(map, paneWidth)
+                return <Svg source={map.source} alt={`@${v.username}'s commits over the last ${v.stats.scale}`} width={size.width} height={size.height} />
               })()}
             </Box>
           )}

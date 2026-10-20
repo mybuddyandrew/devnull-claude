@@ -84,3 +84,32 @@ test('switching back to a tab shows its list at once, then refreshes it', async 
   expect(await ui.find({ key: `star-0-${commit(1).id}` })).toBeDefined()
   await ui.unmount()
 })
+
+test('in a narrow pane every drawing fits inside it', async ($, on) => {
+  mock.store(on, { username: 'me' })
+  mock.env(on, { HOME: '/tmp/devnull-test' })
+  mock.clock(on, { now: Date.parse('2026-10-19T19:00:00Z') })
+  on('process.run', async () => ({ value: { exitCode: 0, stdout: '-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('fs.exists', async () => ({ value: true }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('ui.toast', async () => ({ value: undefined }))
+  const days = Array.from({ length: 365 }, (_, i) => ({ date: new Date(Date.parse('2026-10-19T00:00:00Z') - (364 - i) * 86_400_000).toISOString().slice(0, 10), count: i % 3 }))
+  on('http.fetch', async (_$, e) => {
+    const path = new URL(e.url).pathname
+    const profile = { data: { username: 'user1', name: 'User 1' }, streaks: { current: 3, longest: 9 }, achievements: {}, activity: { scale: 'year', buckets: days } }
+    const body = path === '/api/v1/users/user1' ? profile : path === '/api/v1/me' ? { data: { id: 'u1' } } : { data: [commit(1)], meta: {} }
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body) } }
+  })
+  on('classic.SessionStart', async () => ({}))
+  await $.classic.SessionStart({ source: 'startup' })
+  await $.command.run({ command: 'devnull', args: '' } as never)
+  const narrow = { ...PANE, props: { ...PANE.props, bodyColumns: 24 } }
+  const ui = await $.ui.mount({ plugin: 'devnull', surface: 'desktop', ...narrow })
+  // A profile draws a full year's heatmap, the widest drawing there is.
+  await ui.press({ key: `who-0-${commit(1).id}` })
+  expect(JSON.stringify(await ui.drawn())).toContain('commits over the last year')
+  const widths = [...JSON.stringify(await ui.drawn()).matchAll(/"type":"Svg","props":\{[^}]*?"width":(\d+)/g)].map(m => Number(m[1]))
+  expect(widths.length).toBeGreaterThan(0)
+  expect(Math.max(...widths)).toBeLessThanOrEqual(Math.floor(24 * 7.5))
+  await ui.unmount()
+})
