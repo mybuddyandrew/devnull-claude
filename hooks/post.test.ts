@@ -47,14 +47,14 @@ test('/devnull post waits in the band and only the Post press sends it, line bre
   expect(posted).toHaveLength(1)
 })
 
-test('/devnull draft sums up the session into the band, focus passed to the model', async ($, on) => {
+test('/devnull draft writes with Haiku from what you said, into the band', async ($, on) => {
   mock.store(on, { username: 'me' })
   mock.env(on, { HOME: '/tmp/devnull-test' })
   // Beneath this mod the band draws nothing of its own.
   on('ui.render', { component: 'AbovePrompt' }, async () => ({ type: 'Box', props: {}, children: [] }) as never)
   mock.clock(on, { now: Date.parse('2026-10-19T19:00:00Z') })
   const asked: string[] = []
-  on('model.fork', async (_$, e) => {
+  on('model.complete', async (_$, e) => {
     asked.push(e.prompt)
     return { value: { isAnswered: true, text: 'Taught my Claude Code pane to scroll forever.', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
   })
@@ -62,7 +62,7 @@ test('/devnull draft sums up the session into the band, focus passed to the mode
   await $.classic.SessionStart({ source: 'startup' })
 
   const out = await $.command.run(run('draft the scrolling fix'))
-  expect(out.text).toContain('Drafting a post about this session')
+  expect(out.text).toContain('Drafting with Haiku')
   await settle()
   expect(asked[0]).toContain('Focus on: the scrolling fix')
 
@@ -78,7 +78,7 @@ test('/devnull revise has Claude rewrite the waiting draft, which still waits fo
   // Beneath this mod the band draws nothing of its own.
   on('ui.render', { component: 'AbovePrompt' }, async () => ({ type: 'Box', props: {}, children: [] }) as never)
   const asked: string[] = []
-  on('model.fork', async (_$, e) => {
+  on('model.complete', async (_$, e) => {
     asked.push(e.prompt)
     return { value: { isAnswered: true, text: 'Shorter now.', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
   })

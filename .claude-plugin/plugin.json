@@ -1,6 +1,6 @@
 {
   "name": "devnull",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "/dev/null inside Claude Code: read your log and notifications, and commit, reply, quote, star and save, signed with a device SSH key",
   "author": {
     "name": "Andrew Hodson",
@@ -8,13 +8,5 @@
   },
   "repository": "https://github.com/mybuddyandrew/devnull-claude",
   "license": "MIT",
-  "types": "./types/index.d.ts",
-  "userConfig": {
-    "autoShip": {
-      "type": "boolean",
-      "title": "Suggest posts when you ship",
-      "description": "After a successful git commit or gh pr create, draft a /dev/null post in the band above the prompt. It never posts until you press Post.",
-      "default": true
-    }
-  }
+  "types": "./types/index.d.ts"
 }
