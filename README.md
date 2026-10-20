@@ -34,7 +34,9 @@ In the desktop app, where `/plugin` does not run: click + next to the prompt box
 - `/devnull login` signs this machine in. Approve the device on dev-null.sh in your browser and the pane signs in by itself.
 - `/devnull logout` signs this machine out here. Remove the device on dev-null.sh to revoke its key.
 - `/devnull post <text>` writes a post in Claude's own prompt box, line breaks and all. It waits above the prompt with Post, Edit and Dismiss; nothing is sent until you press Post. The pane's composer, Reply and Quote all start it for you, aimed at the right commit.
-- `/devnull draft [focus]` has Claude sum up what you've been working on in this session as a post, for you to confirm the same way.
+- `/devnull ship [focus]` drafts a post about your latest commit, for you to confirm the same way.
+- `/devnull draft [focus]` drafts a post about what you've been working on.
+- Both use Haiku on a short brief by default (the latest commit's message and changed files, plus your focus): a few hundred tokens. Add `--full` to have your main model read the whole session instead. It knows why you did things, and it costs far more.
 - `/devnull revise <changes>` has Claude rewrite the draft waiting above the prompt (the band's **✨ Revise** button starts it). Edit puts the draft in the prompt box to change yourself; Dismiss throws it away.
 - `/devnull remote @username <message>` sends a Remotes message (once dev-null.sh serves Remotes).
 - `/devnull show <link or id>` draws a commit and its replies as a card in the conversation, and Claude reads it too.
@@ -59,7 +61,7 @@ The pane draws best in the Claude desktop app; the terminal gets a plainer versi
 
 **@mentions.** @names in posts link to that person's profile. While writing a `/devnull` command, type `@` to tag people you follow or have seen. Before you post, the band lists who you're tagging.
 
-**Ship it to /dev/null.** When a `git commit` or `gh pr create` succeeds in your session, Claude drafts a post about what you just shipped, from what the session actually did. It waits in a band above the prompt with Post, Revise, Edit and Dismiss. Nothing is posted until you press Post, and it never replaces a post you typed or asked for that is already waiting. Turn it off with the "Suggest posts when you ship" setting.
+**Ship it to /dev/null.** Run `/devnull ship` after a commit and a draft about it waits in a band above the prompt with Post, Revise, Edit and Dismiss. Nothing is posted until you press Post. Nothing drafts by itself: the mod spends no model tokens unless you ask.
 
 **Claude can use /dev/null.** Ask "what's happening on /dev/null?", "catch me up on my notifications" or "draft a reply to that thread". Claude gets eight tools. What they read is other people's writing, so it reaches Claude marked as untrusted, never as instructions:
 
@@ -91,9 +93,9 @@ To remove everything: unregister and delete the folder.
 
 ## Requirements
 
-macOS: sign-in uses `osacompile` and LaunchServices, avatars are resized with `sips`, and the ship chime plays with `afplay`. `ssh-keygen`, `curl` and `git` must be on your PATH.
+macOS: sign-in uses `osacompile` and LaunchServices, avatars are resized with `sips`, and the ship chime plays with `afplay`. `ssh-keygen`, `curl` and `git` are run from macOS's own `/usr/bin`.
 
-Drafting a post uses your Claude Code model: one tool-less question over the current session (`$.model.fork`), falling back to Haiku on just the commit subject.
+Drafting and revising use Haiku (`$.model.complete`) on a short brief. Only `--full` asks your Claude Code model one tool-less question over the current session (`$.model.fork`), falling back to Haiku if that fails.
 
 ## Notes
 

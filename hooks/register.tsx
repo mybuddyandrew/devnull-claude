@@ -4,7 +4,7 @@ import { finish, logout, poll, startLogin, syncLogin, type Pending } from './log
 import { openPane, registerPane } from './pane'
 import { registerPresses } from './presses'
 import { resumeThread, sendFromPrompt } from './remotes'
-import { draftFromSession, offerFromPrompt, registerShip, reviseDraft } from './ship'
+import { offerFromPrompt, registerShip, reviseDraft, startDraft } from './ship'
 import { refresh } from './feed'
 import { checkRemotes } from './me'
 import { loadStats, registerStreaks, startStreaks } from './streaks'
@@ -12,12 +12,12 @@ import { registerTools, startTools } from './tools'
 import { loadFollowing, registerTranscript, showCommit } from './transcript'
 import { LOGIN_WINDOW_MS, PANE } from './state'
 
-export const register: Register = (on, options) => {
+export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'devnull',
       description: 'Open the /dev/null pane (log + notifications)',
-      argumentHint: '[post <text> | draft [focus] | revise <changes> | remote @user <message> | show <link> | login | logout]',
+      argumentHint: '[post <text> | ship [--full] [focus] | draft [--full] [focus] | revise <changes> | remote @user <message> | show <link> | login | logout]',
     })
     await syncLogin($)
     // The people you follow seed @ completion; in the background, so startup never waits on dev-null.sh.
@@ -53,11 +53,8 @@ export const register: Register = (on, options) => {
     if (sub === 'post') return { text: await offerFromPrompt($, e.args.trim().slice('post'.length).trim()) }
     if (sub === 'remote') return { text: await sendFromPrompt($, e.args.trim().slice('remote'.length)) }
     if (sub === 'revise') return { text: await reviseDraft($, e.args.trim().slice('revise'.length)) }
-    if (sub === 'draft') {
-      if (!(await $.store.get('username'))) return { text: 'Not signed in to /dev/null. Run /devnull login first.' }
-      void draftFromSession($, e.args.trim().slice('draft'.length))
-      return { text: 'Drafting a post about this session. It appears above the prompt to confirm.' }
-    }
+    if (sub === 'ship') return { text: await startDraft($, 'ship', e.args.trim().slice('ship'.length)) }
+    if (sub === 'draft') return { text: await startDraft($, 'session', e.args.trim().slice('draft'.length)) }
     if (sub === 'login') {
       await $.ui.open({ id: PANE, title: '/dev/null' })
       return { text: rest[0] ? await finish($, rest.join('')) : await startLogin($) }
@@ -70,7 +67,7 @@ export const register: Register = (on, options) => {
 
   registerPane(on)
   registerPresses(on)
-  registerShip(on, options)
+  registerShip(on)
   registerTools(on)
   registerTranscript(on)
   registerStreaks(on)
