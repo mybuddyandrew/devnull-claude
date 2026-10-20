@@ -5,6 +5,7 @@ import type { EngineInterface, On, RenderInput } from 'claude-code'
 import { refresh } from './feed'
 import { startLogin, syncLogin } from './login'
 import { checkRemotes } from './me'
+import { resumeThread, stopPolling } from './remotes'
 import { commitDrawer } from './pane-commit'
 import { drawFeed } from './pane-feed'
 import { makeKit } from './pane-kit'
@@ -23,6 +24,7 @@ export async function openPane($: EngineInterface) {
   await syncLogin($)
   await checkRemotes($)
   await $.ui.open({ id: PANE, title: '/dev/null' })
+  await resumeThread($)
   await refresh($)
 }
 
@@ -67,4 +69,9 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
 export function registerPane(on: On): void {
   on('ui.render', { component: 'Pane', requestId: PANE }, ($, e) => drawPane($, e))
   registerScroll(on)
+  // A closed pane polls nothing: an open Remotes thread picks its poll up again when the pane reopens.
+  on('ui.close', { id: PANE }, async ($, e, next) => {
+    stopPolling()
+    return next(e)
+  }).catch(($, e, next) => next(e))
 }

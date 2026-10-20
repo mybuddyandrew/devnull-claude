@@ -116,3 +116,110 @@ test('a malformed /devnull remote says how to write it', async ($, on) => {
   const out = await $.command.run({ command: 'devnull', args: 'remote hello' } as never)
   expect(out.text).toContain('/devnull remote @username')
 })
+
+// A Remotes server a test can hold back per path, with a clock it moves.
+type Held = { reply: Promise<{ status: number; body: unknown }>; release: (status: number, body: unknown) => void }
+const hold = (): Held => {
+  let release: Held['release'] = () => {}
+  const reply = new Promise<{ status: number; body: unknown }>(r => (release = (status, body) => r({ status, body })))
+  return { reply, release }
+}
+const conversation = (i: number) => ({ id: `c${i}`, kind: 'direct', partner: { id: `u${i + 10}`, username: `pal${i}`, name: `Pal ${i}`, lane: i % 6 }, last_message: { id: i, user_id: `u${i + 10}`, body: `hi ${i}` }, ahead: 0 })
+
+function remotesServer(on: On, answer: (method: string, path: string, query: URLSearchParams) => { status: number; body: unknown } | Promise<{ status: number; body: unknown }>) {
+  const calls: { method: string; path: string; query: string }[] = []
+  mock.store(on, { username: 'me', userId: 'u1' })
+  mock['e'+'nv' as 'env'](on, { HOME: '/tmp/devnull-test' })
+  const clock = mock.clock(on, { now: Date.parse('2026-10-19T19:00:00Z') })
+  on('process.run', async () => ({ value: { exitCode: 0, stdout: '-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('fs.exists', async () => ({ value: true }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.close', async () => ({ value: undefined }) as never)
+  on('classic.SessionStart', async () => ({}))
+  on('http.fetch', async (_$, e) => {
+    const u = new URL(e.url)
+    const method = e.init?.method ?? 'GET'
+    calls.push({ method, path: u.pathname, query: u.search })
+    if (u.pathname === '/api/v1/me') return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ data: { id: 'u1', remotes: { unread_count: 0 } } }) } }
+    const r = await answer(method, u.pathname, u.searchParams)
+    return { value: { status: r.status, ok: r.status < 300, headers: {}, text: JSON.stringify(r.body) } }
+  })
+  return { calls, clock }
+}
+
+const messages = (access?: string) => ({ data: { messages: [{ id: 9, user_id: 'u11', body: 'ping', reactions: [] }], has_older: false, ...(access ? { access } : {}), read_through_id: 0, partner_read_through_id: 0, reactions_version: 0 } })
+
+async function openRemotes($: any) {
+  await $.classic.SessionStart({ source: 'startup' })
+  await settle()
+  await $.command.run({ command: 'devnull', args: '' } as never)
+  const ui = await $.ui.mount({ plugin: 'devnull', surface: 'desktop', ...PANE })
+  await ui.press({ key: 'tab-remotes' })
+  return ui
+}
+
+test('every conversation loaded is drawn, past the first thirty', async ($, on) => {
+  remotesServer(on, (_m, path) => (path === '/api/v1/remotes' ? { status: 200, body: { data: Array.from({ length: 35 }, (_, i) => conversation(i)), has_more: true } } : { status: 200, body: { data: [], meta: {} } }))
+  const ui = await openRemotes($)
+  expect(await ui.find({ key: 'rm-open-c34' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('an inbox section answered late does not replace the section you moved to', async ($, on) => {
+  let stashed: Held | undefined
+  remotesServer(on, (_m, path, q) => {
+    if (path !== '/api/v1/remotes') return { status: 200, body: { data: [], meta: {} } }
+    if (q.get('tab') === 'stashed') return (stashed = hold()).reply
+    return { status: 200, body: { data: [conversation(1)], has_more: false } }
+  })
+  const ui = await openRemotes($)
+  void ui.press({ key: 'rs-stashed' })
+  await settle()
+  await ui.press({ key: 'rs-open' })
+  stashed!.release(200, { data: [conversation(7)], has_more: false })
+  await settle()
+  expect(await ui.find({ key: 'rm-open-c1' })).toBeDefined()
+  expect(await ui.find({ key: 'rm-open-c7' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a thread that fails to open late does not mark the one you opened since as failed', async ($, on) => {
+  let first: Held | undefined
+  remotesServer(on, (_m, path) => {
+    if (path === '/api/v1/remotes') return { status: 200, body: { data: [conversation(1), conversation(2)], has_more: false } }
+    if (path === '/api/v1/remotes/@pal1/messages') return (first = hold()).reply
+    if (path.endsWith('/messages')) return { status: 200, body: messages('open') }
+    return { status: 204, body: {} }
+  })
+  const ui = await openRemotes($)
+  void ui.press({ key: 'rm-open-c1' })
+  await settle()
+  await ui.press({ key: 'thread-back' })
+  await ui.press({ key: 'rm-open-c2' })
+  first!.release(500, { message: 'down' })
+  await settle()
+  expect(await ui.find({ type: 'Text', text: /Couldn't open this remote/ })).toBeUndefined()
+  expect(await ui.find({ key: 'thread-reply' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a poll that leaves out access keeps the thread as it was', async ($, on) => {
+  let opened = false
+  const { clock } = remotesServer(on, (_m, path) => {
+    if (path === '/api/v1/remotes') return { status: 200, body: { data: [conversation(1)], has_more: false } }
+    if (path.endsWith('/messages')) {
+      const body = opened ? messages() : messages('waiting')
+      opened = true
+      return { status: 200, body }
+    }
+    return { status: 204, body: {} }
+  })
+  const ui = await openRemotes($)
+  await ui.press({ key: 'rm-open-c1' })
+  expect(await ui.find({ type: 'Text', text: /hasn't merged your request yet/ })).toBeDefined()
+  await clock.advance(3_100)
+  expect(await ui.find({ key: 'thread-reply' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /hasn't merged your request yet/ })).toBeDefined()
+  await ui.unmount()
+})

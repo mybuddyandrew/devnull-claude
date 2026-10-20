@@ -19,8 +19,10 @@ const inbox = atom({ plugin: 'devnull', key: 'inbox' } as const, INITIAL_INBOX)
 const thread = atom({ plugin: 'devnull', key: 'thread' } as const, INITIAL_THREAD)
 
 
-// The open thread's poll; a hot reload drops it, and the next draw of an open thread starts it again.
+// The open thread's poll; a hot reload drops it, and resumeThread (session start, the pane opening) starts it again.
 let poller: Timer | undefined
+// Bumped by each load of a section: a section answered after you moved to another is dropped.
+let inboxSeq = 0
 
 const isNotFound = (error: unknown) => /^404\b/.test(String((error as Error)?.message ?? ''))
 const reason = (error: unknown) => String((error as Error)?.message ?? error).replace(/^\d{3}\s*/, '')
@@ -31,18 +33,24 @@ export async function loadInbox($: EngineInterface, section?: InboxSection, more
   const now = await read($, inbox)
   const tab = section ?? now.section
   const before = more ? now.rows[now.rows.length - 1]?.id : undefined
+  const seq = more || quiet ? inboxSeq : ++inboxSeq
   if (!quiet) await update($, inbox, (i): Inbox => ({ ...i, section: tab, isLoading: true, error: undefined, ...(more ? {} : tab !== i.section ? { rows: [] } : {}) }))
   try {
     const me = await myUserId($)
     const json = obj(await api($, 'GET', 'remotes', { tab, before }))
     const found = list(json.data).map(c => toConversationRow(c, me))
     const current = await read($, inbox)
+    if (seq !== inboxSeq || current.section !== tab) return
+    const ids = new Set(found.map(r => r.id))
+    // A quiet recheck refreshes the first page and keeps the pages you loaded under it.
+    const isDeeper = quiet && current.rows.length > found.length
+    const kept = isDeeper ? current.rows.filter(r => !ids.has(r.id)) : []
     const next: Inbox = {
       ...current,
       section: tab,
       isLoading: false,
-      rows: more ? [...current.rows, ...found] : found,
-      hasMore: json.has_more === true,
+      rows: more ? [...current.rows, ...found.filter(r => !current.rows.some(c => c.id === r.id))] : [...found, ...kept],
+      hasMore: isDeeper ? current.hasMore : json.has_more === true,
       unread: count(json.unread_count),
       requests: count(json.requests_count),
     }
@@ -51,6 +59,7 @@ export async function loadInbox($: EngineInterface, section?: InboxSection, more
     void loadAvatars($, found.map((r): [string, string | undefined] => [r.avatarUser ?? r.title, r.avatarUrl]))
   } catch (error) {
     if (isNotFound(error)) await setLive($, { remotesOn: false })
+    if (seq !== inboxSeq) return
     await update($, inbox, (i): Inbox => ({ ...i, isLoading: false, error: isNotFound(error) ? "Remotes isn't available on dev-null.sh for you yet." : reason(error) }))
   }
 }
@@ -65,7 +74,8 @@ async function threadFields($: EngineInterface, json: unknown): Promise<Partial<
   return {
     messages: list(t.messages).map(m => toMessageRow(m, me)),
     hasOlder: t.has_older === true,
-    access: access === 'request' || access === 'waiting' || access === 'restricted' || access === 'closed' ? access : 'open',
+    // Left out when the answer doesn't say (a poll's delta), so the thread keeps what it had.
+    ...(access === 'open' || access === 'request' || access === 'waiting' || access === 'restricted' || access === 'closed' ? { access } : {}),
     typing,
     readThrough: count(t.read_through_id),
     partnerReadThrough: count(t.partner_read_through_id),
@@ -93,12 +103,18 @@ export async function openThread($: EngineInterface, row: Pick<ConversationRow, 
   }))
   try {
     const fields = await threadFields($, await api($, 'GET', `${threadPath(row.isOrg, row.target)}/messages`))
-    if ((await read($, thread))?.target !== row.target) return
-    await update($, thread, (t): Thread | null => (t ? { ...t, ...fields, status: 'ready' } : t))
+    if (!(await isStillOpen())) return
+    await update($, thread, (t): Thread | null => (t ? { ...t, ...fields, access: fields.access ?? 'open', status: 'ready' } : t))
     await markRead($)
     startPolling($)
   } catch (error) {
-    await update($, thread, (t): Thread | null => (t ? { ...t, status: 'failed', error: reason(error) } : t))
+    // Only this thread's failure, if it is still the one open.
+    if (await isStillOpen()) await update($, thread, (t): Thread | null => (t ? { ...t, status: 'failed', error: reason(error) } : t))
+  }
+
+  async function isStillOpen(): Promise<boolean> {
+    const t = await read($, thread)
+    return t?.target === row.target && t.isOrg === row.isOrg
   }
 }
 

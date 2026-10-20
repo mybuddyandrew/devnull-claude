@@ -162,7 +162,7 @@ export async function drawRemotes($: EngineInterface, kit: Kit, top: Top) {
       {!box.isLoading && !box.error && box.rows.length === 0 && (
         <Text color={MUTED}>{box.section === 'stashed' ? 'Nothing stashed.' : box.section === 'fetched' ? 'No requests.' : 'No remotes yet. Open someone’s profile to start one.'}</Text>
       )}
-      {box.rows.slice(0, 30).map(inboxRow)}
+      {box.rows.map(inboxRow)}
       {box.hasMore && (
         <Box flexDirection="row" justifyContent="center" paddingY={1}>
           {box.isLoading ? busy('rm-loading', 'Loading more') : <Button key="rm-more" label="Load more" onPress={() => void loadInbox($, undefined, true)} />}
