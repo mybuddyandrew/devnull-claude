@@ -7,6 +7,7 @@ import type { EngineInterface, Timer } from 'claude-code'
 import type { ConversationRow, Inbox, InboxSection, Live, MessageRow, Thread } from '../types'
 import { api, loadAvatars } from './core'
 import { clientId, threadPath, toConversationRow, toMessageRow } from './devnull'
+import { emojify } from './emoji'
 import { INITIAL_INBOX, INITIAL_LIVE, INITIAL_THREAD, MESSAGE_MAX, THREAD_POLL_MS } from './state'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
@@ -185,7 +186,8 @@ async function markRead($: EngineInterface): Promise<void> {
 
 // Sends a message to a person (or org); while their thread is open it shows at once and turns pushed or rejected.
 export async function sendMessage($: EngineInterface, isOrg: boolean, target: string, text: string): Promise<string> {
-  const body = text.trim()
+  // :rocket: → 🚀, as GitHub writes shortcodes.
+  const body = emojify(text.trim())
   if (!body) return 'Nothing to send.'
   if (body.length > MESSAGE_MAX) return `Not sent: Remotes take up to ${MESSAGE_MAX} characters and this is ${body.length}.`
   const cid = clientId()

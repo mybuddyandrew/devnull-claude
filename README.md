@@ -43,7 +43,11 @@ The pane draws best in the Claude desktop app; the terminal gets a plainer versi
 
 ## What it does
 
-**The pane.** Following, Latest, Trending and Notifications, drawn like the web: avatars ringed in each author's lane colour with a lane fading out beneath, replies threaded underneath. Commit, reply, quote, star and save from it. A header shows your streak, rank, XP and a heatmap of your commits. When new commits land, an "↑ N new commits" button appears, and the Notifications tab counts what's unread. Scroll to the bottom and the next page loads by itself; scroll up past the top to refresh.
+**The pane.** Following, Latest, Trending and Notifications (each remembered, so switching tabs is instant), drawn like the web: avatars ringed in each author's lane colour with a lane fading out beneath, replies threaded underneath. Commit, reply, quote, star and save from it. A header shows your streak, rank, XP and a heatmap of your commits. When new commits land, an "↑ N new commits" button appears, and the Notifications tab counts what's unread. Scroll to the bottom and the next page loads by itself; scroll up past the top to refresh.
+
+**Reply threads.** A post's **▸ N replies** opens all its replies right under it; star, save, reply to or open any of them there, and **▾ Hide** folds them away. Every button works from the keyboard: Tab to it, Enter to press.
+
+**Emoji.** Type `:st` while writing a `/devnull post` or `remote` and pick ⭐ from the list, or finish `:rocket:` and it turns into 🚀 when you post. GitHub's own shortcodes.
 
 **Profiles.** Click anyone's @handle on a commit or notification, or "your profile" in the header, to open their profile in the pane: bio, followers, streak, rank, XP, earned badges, a heatmap of their commits and their latest commits, with Follow / Unfollow. ← Back returns to the log.
 

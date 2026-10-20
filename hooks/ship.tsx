@@ -6,7 +6,7 @@ import type { EngineInterface, On } from 'claude-code'
 
 import type { Ship } from '../types'
 import { mentionsIn } from './devnull'
-import { aim, draftInComposer, postCommit, refresh } from './feed'
+import { aim, draftInComposer, noteReply, postCommit, refresh } from './feed'
 import { DANGER, INITIAL_SHIP, MUTED } from './state'
 
 const ship = atom({ plugin: 'devnull', key: 'ship' } as const, INITIAL_SHIP)
@@ -128,8 +128,9 @@ async function post($: EngineInterface): Promise<void> {
     })
     postedUrl = row.url
     await update($, ship, (s): Ship => ({ status: 'posted', kind: s.kind, source: s.source, round: s.round + 1 }))
-    // The reply or quote is done: the composer goes back to a new commit.
+    // The reply or quote is done: the composer goes back to a new commit, and a reply shows in its thread.
     if (to) await aim($, 'new')
+    if (to?.mode === 'reply') await noteReply($, to.id).catch(() => {})
     $.ui.toast(to?.mode === 'reply' ? '/dev/null: replied' : to?.mode === 'quote' ? '/dev/null: quoted' : '/dev/null: posted')
     $.audio.play({ asset: 'assets/shipped.wav' }).catch(() => {})
     postedTimer?.cancel()
@@ -177,7 +178,7 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
     const source = s.source ? s.source.slice(0, 80) : ''
     const question = s.kind === 'typed' ? (s.to ? `${source}?` : 'Post this to /dev/null?') : s.kind === 'session' ? 'Post this to /dev/null?' : 'Ship it to /dev/null?'
 
-    const dismissButton = <Button key="ship-dismiss" plain dimColor label="Dismiss" onPress={() => dismiss($)} />
+    const dismissButton = <Button key="ship-dismiss" plain dimColor label="Dismiss" onPress={() => void dismiss($)} />
 
     let body
     if (s.status === 'drafting') {
@@ -196,7 +197,7 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
         <Box flexDirection="column">
           <Text color={DANGER}>{s.error ?? 'Could not post'}</Text>
           <Box flexDirection="row" columnGap={2}>
-            {s.draft ? <Button key="ship-edit" label="Edit" onPress={() => edit($)} /> : null}
+            {s.draft ? <Button key="ship-edit" label="Edit" onPress={() => void edit($)} /> : null}
             {dismissButton}
           </Box>
         </Box>
@@ -212,9 +213,9 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
             <Text color={MUTED}>{`Tagging ${mentionsIn(s.draft ?? '').map(h => `@${h}`).join(', ')}`}</Text>
           )}
           <Box flexDirection="row" columnGap={2} paddingTop={1}>
-            <Button key="ship-post" variant="primary" hotkey="p" label={s.to?.mode === 'reply' ? 'Reply' : s.to?.mode === 'quote' ? 'Quote' : 'Post'} onPress={() => post($)} />
+            <Button key="ship-post" variant="primary" hotkey="p" label={s.to?.mode === 'reply' ? 'Reply' : s.to?.mode === 'quote' ? 'Quote' : 'Post'} onPress={() => void post($)} />
             <Button key="ship-revise" label="✨ Revise" onPress={() => void $.prompt.fill({ text: '/devnull revise ' }).catch(() => {})} />
-            <Button key="ship-edit" label="Edit" onPress={() => edit($)} />
+            <Button key="ship-edit" label="Edit" onPress={() => void edit($)} />
             {dismissButton}
           </Box>
         </Box>

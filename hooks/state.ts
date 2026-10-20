@@ -48,3 +48,6 @@ export const THREAD_POLL_MS = 3000
 // dev-null.sh takes messages up to 2000 characters, 30 a minute.
 export const MESSAGE_MAX = 2000
 export const INITIAL_TAB_CACHE = {} as Record<string, { commits: CommitRow[]; notifications: NoteRow[]; nextCursor?: string }>
+export const INITIAL_OPEN_REPLIES = {} as Record<string, { status: 'loading' | 'ready' | 'failed'; replies: CommitRow[]; error?: string }>
+// An open thread draws at most this many replies inline; the rest are a link away.
+export const MAX_INLINE_REPLIES = 20
