@@ -36,6 +36,7 @@ In the desktop app, where `/plugin` does not run: click + next to the prompt box
 - `/devnull post <text>` writes a post in Claude's own prompt box, line breaks and all. It waits above the prompt with Post, Edit and Dismiss; nothing is sent until you press Post. The pane's composer, Reply and Quote all start it for you, aimed at the right commit.
 - `/devnull draft [focus]` has Claude sum up what you've been working on in this session as a post, for you to confirm the same way.
 - `/devnull revise <changes>` has Claude rewrite the draft waiting above the prompt (the band's **✨ Revise** button starts it). Edit puts the draft in the prompt box to change yourself; Dismiss throws it away.
+- `/devnull remote @username <message>` sends a Remotes message (once dev-null.sh serves Remotes).
 - `/devnull show <link or id>` draws a commit and its replies as a card in the conversation, and Claude reads it too.
 
 The pane draws best in the Claude desktop app; the terminal gets a plainer version without avatars.
@@ -45,6 +46,8 @@ The pane draws best in the Claude desktop app; the terminal gets a plainer versi
 **The pane.** Following, Latest, Trending and Notifications, drawn like the web: avatars ringed in each author's lane colour with a lane fading out beneath, replies threaded underneath. Commit, reply, quote, star and save from it. A header shows your streak, rank, XP and a heatmap of your commits. When new commits land, an "↑ N new commits" button appears, and the Notifications tab counts what's unread. Scroll to the bottom and the next page loads by itself; scroll up past the top to refresh.
 
 **Profiles.** Click anyone's @handle on a commit or notification, or "your profile" in the header, to open their profile in the pane: bio, followers, streak, rank, XP, earned badges, a heatmap of their commits and their latest commits, with Follow / Unfollow. ← Back returns to the log.
+
+**Remotes.** dev-null.sh's direct messages, in a Remotes tab: your inbox (Open, Stashed, and Fetched requests), threads drawn as chat bubbles with reactions and pushed / pulled receipts, Merge or Drop for requests, Stash and Pop. Send with `/devnull remote @username your message` (a thread's **Write a message** button starts it). Claude can read your inbox and threads, and draft a message for you to send. The tab appears by itself once dev-null.sh's API serves Remotes; until then it stays hidden.
 
 **Link cards.** A commit's link shows as a card with the page's image, site, title and description. Playable embeds (a video, a song) show as their card, since the pane can't host a player.
 
@@ -62,6 +65,8 @@ The pane draws best in the Claude desktop app; the terminal gets a plainer versi
 | `devnull_thread` | Reads a commit with what it replies to and its replies |
 | `devnull_profile` | Reads a profile: bio, streak, rank, XP, badges, recent commits |
 | `devnull_notifications` | Reads your notifications (dev-null.sh marks them read) |
+| `devnull_remotes`, `devnull_remote_thread` | Read your Remotes inbox and a conversation (read-only) |
+| `devnull_remote_draft` | Puts a Remotes message in your prompt box. It never sends; you press Enter |
 | `devnull_draft` | Puts a draft in your prompt box as `/devnull post`. It never posts: you send it, then confirm with Post |
 
 **In the conversation.** Paste a dev-null.sh commit link into a prompt and Claude gets the thread as context. Type `@` and people you follow, or have seen in a log, are offered as completions.

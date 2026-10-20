@@ -6,6 +6,7 @@ import type { CommitRow, Compose, Tab } from '../types'
 import { api, commitPath, loadAvatars, loadPictures, nextCursorOf } from './core'
 import { rememberPeople } from './transcript'
 import { offerPost } from './ship'
+import { loadInbox } from './remotes'
 import { dataList, patchCommit, toCommitRow, toNoteRow } from './devnull'
 import {
   INITIAL_COMPOSE,
@@ -24,6 +25,8 @@ const windowStart = atom({ plugin: 'devnull', key: 'windowStart' } as const, INI
 export async function refresh($: EngineInterface, more = false): Promise<void> {
   const showing = await read($, tab)
   if (!(await $.store.get('username'))) return
+  // Remotes has its own inbox and paging.
+  if (showing === 'remotes') return loadInbox($, undefined, more)
   const cursor = more ? (await read($, feed)).nextCursor : undefined
   // A fresh load starts drawing from the top again.
   if (!more) await update($, windowStart, () => 0)

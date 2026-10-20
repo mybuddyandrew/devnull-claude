@@ -2,7 +2,8 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import { api, commitPath, nextCursorOf } from './core'
-import { NOTE_KINDS, ago, dataList, toCommitRow, toNoteRow } from './devnull'
+import { NOTE_KINDS, ago, dataList, threadPath, toCommitRow, toConversationRow, toMessageRow, toNoteRow } from './devnull'
+import { myUserId } from './remotes'
 import type { CommitRow } from '../types'
 import { draftInComposer } from './feed'
 import { openPane } from './pane'
@@ -68,6 +69,28 @@ const TOOLS = [
         quote: { type: 'string', description: 'Commit id (uuid) to quote' },
       },
       required: ['text'],
+    },
+  },
+  {
+    name: 'devnull_remotes',
+    description:
+      "List the user's /dev/null Remotes (direct messages) inbox: one line per conversation with the person or org, the last message, and how many are unread (\"ahead\"). Sections: open (default), stashed, fetched (message requests). Read-only. Remotes needs dev-null.sh's API for it; until then this says it isn't available.",
+    inputSchema: { type: 'object', properties: { section: { type: 'string', enum: ['open', 'stashed', 'fetched'] } } },
+  },
+  {
+    name: 'devnull_remote_thread',
+    description:
+      'Read a /dev/null Remotes conversation: the latest messages with who wrote them, reactions, and whether the user can reply (open, a request to merge, waiting, or closed). Give `username` for a person or `org` for an org id. Read-only: it does not mark anything read.',
+    inputSchema: { type: 'object', properties: { username: { type: 'string', description: 'Username without the @' }, org: { type: 'string', description: 'Org id (uuid)' } } },
+  },
+  {
+    name: 'devnull_remote_draft',
+    description:
+      "Draft a /dev/null Remotes message for the user. This NEVER sends: it puts `/devnull remote @username <text>` in the user's prompt box for them to edit and send with Enter. Up to 2000 characters.",
+    inputSchema: {
+      type: 'object',
+      properties: { username: { type: 'string', description: 'Username without the @' }, text: { type: 'string', description: 'The message, up to 2000 characters' } },
+      required: ['username', 'text'],
     },
   },
 ]
@@ -189,6 +212,59 @@ async function draft($: EngineInterface, e: Record<string, unknown>): Promise<st
 }
 
 // Every handler answers with text and never throws: the model reads the failure.
+const REMOTES_OFF = "Remotes isn't available on dev-null.sh for this user yet (the server's API for it isn't live, or Remotes is switched off)."
+
+async function remotes($: EngineInterface, e: Record<string, unknown>): Promise<string> {
+  const section = ['open', 'stashed', 'fetched'].includes(text(e.section)) ? text(e.section) : 'open'
+  const me = await myUserId($)
+  let json: Record<string, unknown>
+  try {
+    json = (await api($, 'GET', 'remotes', { tab: section })) as Record<string, unknown>
+  } catch (error) {
+    if (/^404\b/.test(String((error as Error).message))) return REMOTES_OFF
+    throw error
+  }
+  const rows = dataList(json).map(c => toConversationRow(c, me))
+  const now = await $.clock.now()
+  const lines = rows.map(r => `${r.isOrg ? `org:${r.target} (${r.title})` : `@${r.target} (${r.title})`} · ${r.ahead > 0 ? `${r.ahead} unread` : ago(r.lastAt, now)}: ${r.lastIsMine ? 'you: ' : ''}${cut(oneLine(r.lastText ?? ''), LINE_BODY)}`)
+  const counts = json as { unread_count?: unknown; requests_count?: unknown }
+  return cap([`Remotes, ${section}: ${rows.length} conversations, ${Number(counts.unread_count ?? 0)} unread, ${Number(counts.requests_count ?? 0)} requests.`, ...lines].join('\n'))
+}
+
+async function remoteThread($: EngineInterface, e: Record<string, unknown>): Promise<string> {
+  const org = text(e.org)
+  const username = text(e.username).replace(/^@/, '')
+  if (!org && !username) return 'Give a username or an org id.'
+  const isOrg = org !== ''
+  const me = await myUserId($)
+  let json: Record<string, unknown>
+  try {
+    json = (await api($, 'GET', `${threadPath(isOrg, isOrg ? org : username)}/messages`)) as Record<string, unknown>
+  } catch (error) {
+    if (/^404\b/.test(String((error as Error).message))) return `${REMOTES_OFF} (Or the user can't message ${isOrg ? 'that org' : `@${username}`}.)`
+    throw error
+  }
+  const t = (json.data ?? {}) as Record<string, unknown>
+  const messages = (Array.isArray(t.messages) ? t.messages : []).map(m => toMessageRow(m as Record<string, unknown>, me))
+  const now = await $.clock.now()
+  const lines = messages.map(m =>
+    m.event
+      ? `  (${m.username ? `@${m.username} ` : ''}${m.event})`
+      : `[${m.id}] ${m.isMine ? 'you' : m.username ? `@${m.username}` : isOrg ? 'someone' : `@${username}`} · ${ago(m.createdAt, now)}: ${cut(oneLine(m.body), 600)}${m.reactions.length ? ` [${m.reactions.map(r => r.emoji).join(' ')}]` : ''}`,
+  )
+  return cap([`Remotes thread with ${isOrg ? `org ${org}` : `@${username}`}; access: ${String(t.access ?? 'open')}.`, ...lines].join('\n'))
+}
+
+async function remoteDraft($: EngineInterface, e: Record<string, unknown>): Promise<string> {
+  const username = text(e.username).replace(/^@/, '')
+  const body = text(e.text)
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/.test(username)) return 'Give a valid username.'
+  if (!body) return 'Nothing to draft.'
+  if (body.length > 2000) return `Too long: Remotes take up to 2000 characters and this is ${body.length}.`
+  await $.prompt.fill({ text: `/devnull remote @${username} ${body}` }).catch(() => {})
+  return "Draft placed in the user's prompt box. The user must press Enter to send it."
+}
+
 async function answer($: EngineInterface, e: unknown, run: (a: Record<string, unknown>) => Promise<string>): Promise<{ result: string }> {
   try {
     if (!(await $.store.get('username'))) return { result: NOT_SIGNED_IN }
@@ -204,4 +280,7 @@ export function registerTools(on: On): void {
   on('tool.call', { tool: 'mcp__devnull__devnull_profile' }, async ($, e) => answer($, e, a => profile($, a)))
   on('tool.call', { tool: 'mcp__devnull__devnull_notifications' }, async ($, e) => answer($, e, a => notifications($, a)))
   on('tool.call', { tool: 'mcp__devnull__devnull_draft' }, async ($, e) => answer($, e, a => draft($, a)))
+  on('tool.call', { tool: 'mcp__devnull__devnull_remotes' }, async ($, e) => answer($, e, a => remotes($, a)))
+  on('tool.call', { tool: 'mcp__devnull__devnull_remote_thread' }, async ($, e) => answer($, e, a => remoteThread($, a)))
+  on('tool.call', { tool: 'mcp__devnull__devnull_remote_draft' }, async ($, e) => answer($, e, a => remoteDraft($, a)))
 }

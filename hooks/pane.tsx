@@ -2,11 +2,12 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderInput } from 'claude-code'
 
-import type { CommitRow, Live } from '../types'
+import type { CommitRow, ConversationRow, InboxSection, Live, MessageRow } from '../types'
 import { MENTION_HREF, NOTE_KINDS, pictureSvg, TAIL_HEIGHT, ago, avatarSvg, handleFromHref, linkMentions, mentionsIn, preview, tailSvg, underlineSvg } from './devnull'
 import { aim, react, refresh, show, startInPrompt } from './feed'
 import { startLogin, syncLogin } from './login'
 import { closeProfile, openProfile, toggleFollow } from './profile'
+import { answerRequest, checkRemotes, closeThread, loadInbox, openThread, pingTyping, retryMessage, setStashed, toggleReaction } from './remotes'
 import { heatmapSvg } from './streaks'
 import {
   AVATAR_BUDGET_CHARS,
@@ -20,7 +21,9 @@ import {
   INITIAL_LOGIN,
   INITIAL_LIVE,
   INITIAL_PULL,
+  INITIAL_INBOX,
   INITIAL_PICTURES,
+  INITIAL_THREAD,
   INITIAL_PROFILE,
   PICTURE_BUDGET_CHARS,
   INITIAL_WINDOW_START,
@@ -50,10 +53,13 @@ const pull = atom({ plugin: 'devnull', key: 'pull' } as const, INITIAL_PULL)
 const windowStart = atom({ plugin: 'devnull', key: 'windowStart' } as const, INITIAL_WINDOW_START)
 const profile = atom({ plugin: 'devnull', key: 'profile' } as const, INITIAL_PROFILE)
 const pictures = atom({ plugin: 'devnull', key: 'pictures' } as const, INITIAL_PICTURES)
+const inbox = atom({ plugin: 'devnull', key: 'inbox' } as const, INITIAL_INBOX)
+const thread = atom({ plugin: 'devnull', key: 'thread' } as const, INITIAL_THREAD)
 const stats = atom({ plugin: 'devnull', key: 'stats' } as const, INITIAL_STATS)
 
 export async function openPane($: EngineInterface) {
   await syncLogin($)
+  await checkRemotes($)
   await $.ui.open({ id: PANE, title: '/dev/null' })
   await refresh($)
 }
@@ -75,6 +81,9 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     const from = await read($, windowStart)
     const person = await read($, profile)
     const images = await read($, pictures)
+    const box = await read($, inbox)
+    const chat = await read($, thread)
+    const myId = (await $.store.get('userId').catch(() => undefined)) as string | undefined
     const me = await read($, stats)
     const now = Date.now()
 
@@ -93,9 +102,10 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     const tabs = (
       <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingBottom={1}>
         <Box flexDirection="row" columnGap={3}>
-          {TABS.map(t => (
+          {/* Remotes only shows once dev-null.sh serves it and you have it switched on. */}
+          {TABS.filter(t => t !== 'remotes' || fresh.remotesOn || showing === 'remotes').map(t => (
             <Box key={`tabbox-${t}`} flexDirection="column" alignItems="center" rowGap={0}>
-              <Button key={`tab-${t}`} plain label={t === 'notifications' && fresh.unread > 0 ? `${LABELS[t]} (${fresh.unread})` : LABELS[t]} {...(t === showing ? {} : { dimColor: true as const })} onPress={() => show($, t)} />
+              <Button key={`tab-${t}`} plain label={t === 'notifications' && fresh.unread > 0 ? `${LABELS[t]} (${fresh.unread})` : t === 'remotes' && (fresh.remotesUnread ?? 0) > 0 ? `${LABELS[t]} (${fresh.remotesUnread})` : LABELS[t]} {...(t === showing ? {} : { dimColor: true as const })} onPress={() => show($, t)} />
               {t === showing && Svg && <Svg source={underlineSvg(LABELS[t].length * 8)} alt="Selected tab" width={LABELS[t].length * 8} height={3} />}
             </Box>
           ))}
@@ -342,6 +352,158 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
       </Box>
     )
 
+    // Remotes: a thread, when one is open, in place of the inbox.
+    if (showing === 'remotes' && !person) {
+      const QUICK = ['😂', '✅', '❤️']
+      const sections: { id: InboxSection; label: string }[] = [
+        { id: 'open', label: 'Open' },
+        { id: 'stashed', label: 'Stashed' },
+        ...(box.requests > 0 || box.section === 'fetched' ? [{ id: 'fetched' as const, label: `Fetched${box.requests > 0 ? ` · ${box.requests}` : ''}` }] : []),
+      ]
+      const handleOf = (isOrg: boolean, target: string) => (isOrg ? `org:${target}` : `@${target}`)
+      const inboxRow = (r: ConversationRow) => (
+        <Box key={`rm-${r.id}`} flexDirection="row" columnGap={2} paddingY={1}>
+          <Box flexShrink={0}>{ring(r.lane, r.avatarUser ?? r.title, 36)}</Box>
+          <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+            <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
+              <Button key={`rm-open-${r.id}`} plain label={r.isOrg ? `${r.title} · org` : r.title} onPress={() => openThread($, r)} />
+              <Text size="footnote" color={r.ahead > 0 ? PRIMARY : MUTED}>
+                {r.ahead > 0 ? `${r.ahead} ahead` : ago(r.lastAt, now)}
+              </Text>
+            </Box>
+            {r.lastText && (
+              <Text color={MUTED} wrap="truncate-end">
+                {`${r.lastIsMine ? 'you: ' : ''}${r.lastText}`}
+              </Text>
+            )}
+          </Box>
+        </Box>
+      )
+      const bubble = (m: MessageRow, isLastMine: boolean) => {
+        if (m.event) {
+          return (
+            <Box key={`msg-${m.id}`} flexDirection="row" justifyContent="center" paddingY={1}>
+              <Text size="footnote" color={MUTED}>{`${m.username ? `@${m.username} ` : ''}${m.event}`}</Text>
+            </Box>
+          )
+        }
+        const groups = [...new Set(m.reactions.map(r => r.emoji))].map(emoji => ({ emoji, count: m.reactions.filter(r => r.emoji === emoji).length, isMine: m.reactions.some(r => r.emoji === emoji && r.userId === myId) }))
+        const status = m.status === 'staged' ? 'staged…' : m.status === 'rejected' ? undefined : isLastMine ? (chat && chat.partnerReadThrough >= m.id ? 'pulled' : 'pushed') : undefined
+        return (
+          <Box key={`msg-${m.id || m.clientId}`} flexDirection="row" justifyContent={m.isMine ? 'flex-end' : 'flex-start'} paddingTop={1}>
+            <Box flexDirection="column" borderStyle="round" borderColor={m.isMine ? (chat?.lane ?? PRIMARY) : HAIRLINE} paddingX={1} width="80%">
+              {chat?.isOrg && !m.isMine && m.username && (
+                <Text size="footnote" color={MUTED}>
+                  @{m.username}
+                </Text>
+              )}
+              {m.replyTo && <Text size="footnote" color={MUTED} wrap="truncate-end">{`↩ ${m.replyTo.body}`}</Text>}
+              {m.body !== '' && <Markdown key={`mb-${m.id || m.clientId}`} text={linkMentions(m.body)} />}
+              {m.images > 0 && <Text color={MUTED}>{m.images === 1 ? '📷 an image (open on dev-null.sh)' : `📷 ${m.images} images`}</Text>}
+              {(groups.length > 0 || (!m.isMine && m.id > 0)) && (
+                <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+                  {groups.map(g => (
+                    <Button key={`rx-${m.id}-${g.emoji}`} plain {...(g.isMine ? {} : { dimColor: true as const })} label={`${g.emoji} ${g.count}`} onPress={() => toggleReaction($, m.id, g.emoji)} />
+                  ))}
+                  {!m.isMine && m.id > 0 && QUICK.filter(q => !groups.some(g => g.emoji === q)).map(q => (
+                    <Button key={`rq-${m.id}-${q}`} plain dimColor label={q} onPress={() => toggleReaction($, m.id, q)} />
+                  ))}
+                </Box>
+              )}
+              {status && <Text size="footnote" color={MUTED}>{status}</Text>}
+              {m.status === 'rejected' && m.clientId && (
+                <Box flexDirection="row" columnGap={2}>
+                  <Text size="footnote" color={DANGER}>rejected</Text>
+                  <Button key={`retry-${m.clientId}`} plain label="Retry" onPress={() => retryMessage($, m.clientId!)} />
+                </Box>
+              )}
+            </Box>
+          </Box>
+        )
+      }
+
+      if (chat) {
+        const lastMine = [...chat.messages].reverse().find(m => m.isMine && m.id > 0)?.id
+        const shown = chat.messages.slice(-40)
+        const typing = chat.typing.length === 0 ? '' : chat.typing.length === 1 ? `@${chat.typing[0]} is typing…` : chat.typing.length === 2 ? `@${chat.typing[0]} and @${chat.typing[1]} are typing…` : `${chat.typing.length} people are typing…`
+        return (
+          <Box flexDirection="column">
+            <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingBottom={1}>
+              <Button key="thread-back" plain label="← Remotes" onPress={() => closeThread($)} />
+              {chat.status === 'ready' && (
+                <Button key="thread-stash" plain dimColor label={chat.isArchived ? 'Pop' : 'Stash'} onPress={() => setStashed($, !chat.isArchived)} />
+              )}
+            </Box>
+            <Box flexDirection="row" alignItems="center" columnGap={2} paddingBottom={1}>
+              <Box flexShrink={0}>{ring(chat.lane, chat.avatarUser ?? chat.title, 40)}</Box>
+              <Box flexDirection="column">
+                <Text size="heading" weight="semibold">
+                  {chat.title}
+                </Text>
+                <Text size="footnote" color={typing ? PRIMARY : MUTED}>
+                  {typing || (chat.isOrg ? 'org' : `@${chat.target}`)}
+                </Text>
+              </Box>
+            </Box>
+            {chat.status === 'loading' && <Text color={MUTED}>Loading…</Text>}
+            {chat.status === 'failed' && <Text color={DANGER}>Couldn't open this remote: {chat.error}</Text>}
+            {chat.hasOlder && chat.messages.length > 0 && <Text size="footnote" color={MUTED}>Older messages are on dev-null.sh.</Text>}
+            {shown.map(m => bubble(m, m.id === lastMine))}
+            <Box flexDirection="column" paddingTop={1}>
+              {chat.access === 'request' && (
+                <Box flexDirection="column" rowGap={1}>
+                  <Text>{`@${chat.target} wants to push to you.`}</Text>
+                  <Box flexDirection="row" columnGap={2}>
+                    <Button key="req-merge" variant="primary" label="Merge" onPress={() => answerRequest($, 'merge')} />
+                    <Button key="req-drop" label="Drop" onPress={() => answerRequest($, 'drop')} />
+                  </Box>
+                </Box>
+              )}
+              {chat.access === 'waiting' && <Text color={MUTED}>{`@${chat.target} hasn't merged your request yet.`}</Text>}
+              {chat.access === 'restricted' && <Text color={MUTED}>{`@${chat.target} doesn't follow you, so you can't push to them yet.`}</Text>}
+              {chat.access === 'closed' && <Text color={MUTED}>{`@${chat.target} isn't taking remotes.`}</Text>}
+              {chat.access === 'open' && chat.status === 'ready' && (
+                <Box flexDirection="row">
+                  <Button
+                    key="thread-reply"
+                    variant="primary"
+                    label="Write a message"
+                    onPress={async () => {
+                      await $.prompt.fill({ text: `/devnull remote ${handleOf(chat.isOrg, chat.target)} ` }).catch(() => {})
+                      await pingTyping($)
+                    }}
+                  />
+                </Box>
+              )}
+            </Box>
+          </Box>
+        )
+      }
+
+      return (
+        <Box flexDirection="column">
+          {header}
+          {tabs}
+          <Box flexDirection="row" columnGap={3} paddingBottom={1}>
+            {sections.map(sec => (
+              <Button key={`rs-${sec.id}`} plain {...(sec.id === box.section ? {} : { dimColor: true as const })} label={sec.label} onPress={() => loadInbox($, sec.id)} />
+            ))}
+          </Box>
+          {box.error && <Text color={DANGER}>{box.error}</Text>}
+          {box.isLoading && box.rows.length === 0 && <Text color={MUTED}>Loading…</Text>}
+          {!box.isLoading && !box.error && box.rows.length === 0 && (
+            <Text color={MUTED}>{box.section === 'stashed' ? 'Nothing stashed.' : box.section === 'fetched' ? 'No requests.' : 'No remotes yet. Open someone’s profile to start one.'}</Text>
+          )}
+          {box.rows.slice(0, 30).map(inboxRow)}
+          {box.hasMore && (
+            <Box flexDirection="row" justifyContent="center" paddingY={1}>
+              <Button key="rm-more" label={box.isLoading ? 'Loading…' : 'Load more'} onPress={() => loadInbox($, undefined, true)} />
+            </Box>
+          )}
+        </Box>
+      )
+    }
+
     // A profile, when one is open, takes the pane's place until Back.
     if (person) {
       const v = person.view
@@ -483,8 +645,9 @@ export function registerPane(on: On): void {
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     const moved = await next(e)
     if (e.origin.kind !== 'person') return moved
-    // A profile scrolls as one page; the log's window and pull to refresh wait for Back.
+    // A profile scrolls as one page; the log's window and pull to refresh wait for Back. So does Remotes.
     if (await read($, profile)) return moved
+    if ((await read($, tab)) === 'remotes') return moved
     const now = await $.clock.now()
     if (e.by < 0 && e.offset === 0 && (await read($, windowStart)) > 0) {
       // Deep in the list, the top of the pane is only the top of the drawn window: bring back newer rows.

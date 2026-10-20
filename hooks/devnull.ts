@@ -2,7 +2,7 @@
 // signed message, PKCE, and turning API JSON into the rows the pane draws.
 // Mirrors App\Devnull\Client and RequestSigner in nativephp/dev-null-app.
 
-import type { CommitRow, NoteRow } from '../types'
+import type { CommitRow, ConversationRow, MessageRow, NoteRow } from '../types'
 
 export const BASE_URL = 'https://dev-null.sh'
 export const NAMESPACE = 'devnull-api'
@@ -288,4 +288,63 @@ const hostOf = (url: string): string | undefined => {
   } catch {
     return undefined
   }
+}
+
+// Remotes (direct messages). A message is yours when its user_id is your account's id.
+export const toMessageRow = (m: Json, myId: string | undefined): MessageRow => {
+  const user = obj(m.user)
+  const replyTo = obj(m.reply_to)
+  const userId = String(m.user_id ?? '')
+  return {
+    id: typeof m.id === 'number' ? m.id : Number(m.id ?? 0) || 0,
+    userId,
+    ...(str(user.username) ? { username: str(user.username) } : {}),
+    isMine: myId !== undefined && userId !== '' && userId === myId,
+    body: str(m.body) ?? '',
+    ...(typeof replyTo.id === 'number' ? { replyTo: { id: replyTo.id, body: str(replyTo.body) ?? (num(replyTo.images_count) ? '(image)' : '') } } : {}),
+    ...(str(m.event) ? { event: str(m.event) } : {}),
+    reactions: list(m.reactions).map(r => ({ userId: String(r.user_id ?? ''), emoji: str(r.emoji) ?? '' })).filter(r => r.emoji),
+    images: list(m.images).length,
+    ...(str(m.created_at) ? { createdAt: str(m.created_at) } : {}),
+    ...(str(m.client_id) ? { clientId: str(m.client_id) } : {}),
+  }
+}
+
+export const toConversationRow = (c: Json, myId: string | undefined): ConversationRow => {
+  const isOrg = c.kind === 'org'
+  const partner = obj(c.partner)
+  const members = list(c.members).map(m => obj(m.user))
+  const others = members.filter(u => String(u.id ?? '') !== myId)
+  const face = isOrg ? (others[0] ?? {}) : partner
+  const last = obj(c.last_message)
+  const lastBody = str(last.body) ?? (list(last.images).length ? 'sent an image' : str(last.event) ? `${str(last.event)}` : undefined)
+  const title = isOrg
+    ? (str(c.name) ?? (others.map(u => str(u.username)).filter(Boolean).slice(0, 3).join(', ') || 'org'))
+    : (str(partner.name) ?? str(partner.username) ?? '?')
+  return {
+    id: String(c.id ?? ''),
+    isOrg,
+    target: isOrg ? String(c.id ?? '') : (str(partner.username) ?? ''),
+    title,
+    lane: laneColor(face.lane),
+    ...(str(face.avatar_url) ? { avatarUrl: str(face.avatar_url), avatarUser: str(face.username) } : {}),
+    ...(lastBody ? { lastText: lastBody } : {}),
+    lastIsMine: myId !== undefined && String(last.user_id ?? '') === myId,
+    ...(str(c.last_message_at) ? { lastAt: str(c.last_message_at) } : {}),
+    ahead: num(c.ahead),
+    isArchived: c.is_archived === true,
+  }
+}
+
+// Where a conversation's API lives: a person by username, an org by id.
+export const threadPath = (isOrg: boolean, target: string): string =>
+  isOrg ? `remotes/orgs/${encodeURIComponent(target)}` : `remotes/@${encodeURIComponent(target)}`
+
+// A fresh client id for a message, so a retry is never sent twice.
+export const clientId = (): string => {
+  const b = randomBytes(16)
+  b[6] = (b[6]! & 0x0f) | 0x40
+  b[8] = (b[8]! & 0x3f) | 0x80
+  const h = hex(b)
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }

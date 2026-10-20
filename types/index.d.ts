@@ -1,4 +1,4 @@
-export type Tab = 'following' | 'latest' | 'trending' | 'notifications'
+export type Tab = 'following' | 'latest' | 'trending' | 'notifications' | 'remotes'
 
 export type CommitRow = {
   id: string
@@ -123,7 +123,74 @@ export type Profile = {
 }
 
 // What changed since the pane last loaded: new commits on the shown log, and unread notifications.
-export type Live = { newCount: number; unread: number }
+// remotesOn: dev-null.sh serves Remotes (direct messages) and you have them switched on; remotesUnread: its badge.
+export type Live = { newCount: number; unread: number; remotesOn?: boolean; remotesUnread?: number }
+
+// A Remotes conversation in the inbox: a direct one with a partner, or an org (a group).
+export type ConversationRow = {
+  id: string
+  isOrg: boolean
+  // the partner's username for a direct conversation; the org's id for an org
+  target: string
+  title: string
+  lane: string
+  avatarUrl?: string
+  avatarUser?: string
+  lastText?: string
+  lastIsMine: boolean
+  lastAt?: string
+  ahead: number
+  isArchived: boolean
+}
+
+// One message in a Remotes thread, as dev-null.sh sends it.
+export type MessageRow = {
+  id: number
+  userId: string
+  username?: string
+  isMine: boolean
+  body: string
+  replyTo?: { id: number; body: string }
+  event?: string
+  reactions: { userId: string; emoji: string }[]
+  images: number
+  createdAt?: string
+  // set while the message is being sent, or when dev-null.sh refused it
+  status?: 'staged' | 'rejected'
+  clientId?: string
+}
+
+export type InboxSection = 'open' | 'stashed' | 'fetched'
+
+export type Inbox = {
+  section: InboxSection
+  rows: ConversationRow[]
+  isLoading: boolean
+  error?: string
+  hasMore: boolean
+  unread: number
+  requests: number
+}
+
+// The open Remotes thread, if any: the pane shows it in place of the inbox.
+export type Thread = {
+  isOrg: boolean
+  target: string
+  title: string
+  lane: string
+  avatarUrl?: string
+  avatarUser?: string
+  status: 'loading' | 'ready' | 'failed'
+  error?: string
+  messages: MessageRow[]
+  hasOlder: boolean
+  access: 'open' | 'request' | 'waiting' | 'restricted' | 'closed'
+  typing: string[]
+  readThrough: number
+  partnerReadThrough: number
+  reactionsVersion: number
+  isArchived: boolean
+}
 
 declare module 'claude-code' {
   interface PluginState {
@@ -141,6 +208,8 @@ declare module 'claude-code' {
       // index of the first loaded row the pane draws; the desktop drops a drawing that grows too large
       windowStart: number
       profile: Profile | null
+      inbox: Inbox
+      thread: Thread | null
       // image URL → small JPEG data: URI, fetched once per session, drawn inline within a budget
       pictures: Record<string, string>
     }

@@ -1,9 +1,9 @@
 // The mod's shared state and look: one place for the atoms every feature reads.
-import type { Compose, Feed, Live, Login, Profile, Ship, Stats, Tab } from '../types'
+import type { Compose, Feed, Inbox, Live, Login, Profile, Ship, Stats, Tab, Thread } from '../types'
 
 export const PANE = 'devnull'
-export const TABS: Tab[] = ['following', 'latest', 'trending', 'notifications']
-export const LABELS: Record<Tab, string> = { following: 'Following', latest: 'Latest', trending: 'Trending', notifications: 'Notifications' }
+export const TABS: Tab[] = ['following', 'latest', 'trending', 'notifications', 'remotes']
+export const LABELS: Record<Tab, string> = { following: 'Following', latest: 'Latest', trending: 'Trending', notifications: 'Notifications', remotes: 'Remotes' }
 // The web app's dark tokens.
 export const PRIMARY = '#7aa2f7'
 export const MUTED = '#a1a1a6'
@@ -41,3 +41,9 @@ export const INITIAL_PICTURES = {} as Record<string, string>
 // Images are embedded too: each a 260px JPEG of at most 16 KB, and one draw carries at most 45 KB of them.
 export const PICTURE_MAX_CHARS = 16_000
 export const PICTURE_BUDGET_CHARS = 45_000
+export const INITIAL_INBOX = { section: 'open', rows: [], isLoading: false, hasMore: false, unread: 0, requests: 0 } as Inbox
+export const INITIAL_THREAD = null as Thread | null
+// Remotes polls as the phone app does: an open thread every few seconds, faster right after activity.
+export const THREAD_POLL_MS = 3000
+// dev-null.sh takes messages up to 2000 characters, 30 a minute.
+export const MESSAGE_MAX = 2000
