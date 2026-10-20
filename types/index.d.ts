@@ -76,8 +76,8 @@ export type Ship = {
   round: number
   // where the draft came from: work shipped (git commit, gh pr create), typed with /devnull post, or /devnull draft
   kind?: 'ship' | 'typed' | 'session'
-  // a reply or quote target for the post
-  to?: { mode: 'reply' | 'quote'; id: string; handle?: string }
+  // a reply or quote target for the post, or a Remotes message to send instead (id: the username or org id)
+  to?: { mode: 'reply' | 'quote'; id: string; handle?: string } | { mode: 'remote'; id: string; isOrg: boolean }
 }
 
 // The signed-in user's profile stats from GET users/{me}.

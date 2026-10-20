@@ -7,6 +7,7 @@ import { api, ensureHandler, ensureKey, paths, run } from './core'
 import { authorizeUrl, base64Url, challenge, fingerprintOf, parseCallback, randomBytes } from './devnull'
 import { show } from './feed'
 import {
+  BIN,
   INITIAL_LOGIN,
   LOGIN_WINDOW_MS,
 } from './state'
@@ -57,7 +58,9 @@ export function poll($: EngineInterface, pending: Pending) {
       const p = await paths($)
       if (await $.fs.exists(p.callback)) {
         const url = await $.fs.read(p.callback)
-        await run($, ['rm', '-f', p.callback])
+        await run($, [BIN.rm, '-f', p.callback])
+        // A callback for some other sign-in (an old tab, or a link a page opened) is dropped, and this one waits on.
+        if (parseCallback(url).state !== pending.state) return
         await finish($, url)
       } else if (Date.now() - pending.startedAt > LOGIN_WINDOW_MS) {
         stopPolling()
@@ -72,16 +75,16 @@ export async function startLogin($: EngineInterface): Promise<string> {
   const p = await paths($)
   await ensureKey($, p)
   await ensureHandler($, p)
-  await run($, ['rm', '-f', p.callback])
+  await run($, [BIN.rm, '-f', p.callback])
 
   const verifier = base64Url(randomBytes(32))
   const pending: Pending = { verifier, state: base64Url(randomBytes(16)), startedAt: Date.now() }
   await $.store.set('pending', pending)
-  const fingerprint = fingerprintOf(await run($, ['ssh-keygen', '-lf', `${p.key}.pub`]))
+  const fingerprint = fingerprintOf(await run($, [BIN.sshKeygen, '-lf', `${p.key}.pub`]))
   const url = authorizeUrl({ fingerprint, deviceName: 'Claude Code', challenge: await challenge(verifier), state: pending.state })
 
   await update($, login, (): Login => ({ status: 'waiting' }))
-  await run($, ['open', url])
+  await run($, [BIN.open, url])
   poll($, pending)
 
   return [

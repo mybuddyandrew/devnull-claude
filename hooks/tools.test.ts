@@ -52,11 +52,50 @@ test('the thread tool accepts a link and reads ancestors and replies', async ($,
   expect(out.result).toContain('a reply')
 })
 
-test('the draft tool only fills the composer and never posts', async ($, on) => {
+const BAND = {
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 80, scroll: { offset: 0, bodyRows: 11 }, view: {} },
+} as const
+
+test('the draft tool shows the draft above the prompt and never posts or fills the prompt box', async ($, on) => {
   const seen = stub(on, 'me', () => FOLLOWING)
+  let filled = false
+  on('prompt.fill', async () => {
+    filled = true
+    return { isFilled: true, box: { text: '', cursor: 0 } } as never
+  })
   const out = await call($, 'devnull_draft', { text: 'hello world', reply_to: UUID })
-  expect(out.result).toContain('The user must press Enter')
+  expect(out.result).toContain('Nothing is posted until the user presses Post')
   expect(seen.some(f => f.method === 'POST')).toBe(false)
+  expect(filled).toBe(false)
+  const band = await $.ui.mount({ plugin: 'devnull', surface: 'desktop', ...BAND })
+  expect(await band.find({ type: 'Text', text: /hello world/ })).toBeDefined()
+  expect((await band.find({ key: 'ship-post' }))?.text).toContain('Reply')
+  await band.unmount()
   const short = await call($, 'devnull_draft', { text: 'hi' })
   expect(short.result).toContain('3 to 4000')
+})
+
+test('the Remotes draft tool waits for Push, then sends', async ($, on) => {
+  const seen = stub(on, 'me', url => (url.includes('/remotes/') ? { data: { id: 1, user_id: 'u1', body: 'see you', reactions: [] } } : { data: { id: 'u1' } }))
+  on('ui.toast', async () => ({ value: undefined }))
+  const out = await call($, 'devnull_remote_draft', { username: 'ada', text: 'see you' })
+  expect(out.result).toContain('Nothing is sent until the user presses Push')
+  expect(seen.some(f => f.method === 'POST')).toBe(false)
+  const band = await $.ui.mount({ plugin: 'devnull', surface: 'desktop', ...BAND })
+  expect(await band.find({ type: 'Text', text: /Push to @ada\?/ })).toBeDefined()
+  await band.press({ key: 'ship-post' })
+  expect(seen.some(f => f.method === 'POST' && f.url.endsWith('/api/v1/remotes/@ada/messages'))).toBe(true)
+  await band.unmount()
+  expect((await call($, 'devnull_remote_draft', { username: '../me', text: 'x' })).result).toBe('Give a valid username.')
+})
+
+test('what the read tools return is marked as untrusted, and a bad username is refused before any request', async ($, on) => {
+  const seen = stub(on, 'me', () => FOLLOWING)
+  const out = await call($, 'devnull_feed', { log: 'following' })
+  expect(out.result).toContain('<untrusted source="dev-null.sh">')
+  expect(out.result?.trimEnd().endsWith('</untrusted>')).toBe(true)
+  const before = seen.length
+  expect((await call($, 'devnull_profile', { username: '../../me' })).result).toContain('Give a valid username.')
+  expect(seen.length).toBe(before)
 })

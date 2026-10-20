@@ -5,7 +5,7 @@ import type { EngineInterface, On } from 'claude-code'
 import type { CommitRow } from '../types'
 import { searchEmoji } from './emoji'
 import { api, loadAvatars, nextCursorOf } from './core'
-import { ago, avatarSvg, dataList, toCommitRow } from './devnull'
+import { ago, avatarSvg, dataList, toCommitRow, untrusted } from './devnull'
 import { AVATAR_MAX_CHARS, HAIRLINE, INITIAL_AVATARS, INITIAL_FEED, INITIAL_PEOPLE, MUTED, STAR } from './state'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
@@ -88,13 +88,15 @@ export async function showCommit($: EngineInterface, arg: string): Promise<{ tex
 // Compact plain text of a thread for the model.
 function threadContext(t: Thread, now: number): string {
   const line = (r: CommitRow) => `@${r.username}${r.createdAt ? ` (${ago(r.createdAt, now)} ago)` : ''}: ${r.body}`
-  return [
-    `dev-null.sh commit${t.commit.url ? ` ${t.commit.url}` : ''}`,
-    ...t.ancestors.map(a => `  parent ${line(a)}`),
-    line(t.commit),
-    `${t.commit.stars} stars, ${t.commit.replies} replies`,
-    ...t.replies.slice(0, 5).map(r => `  reply ${line(r)}`),
-  ].join('\n')
+  return untrusted(
+    [
+      `dev-null.sh commit${t.commit.url ? ` ${t.commit.url}` : ''}`,
+      ...t.ancestors.map(a => `  parent ${line(a)}`),
+      line(t.commit),
+      `${t.commit.stars} stars, ${t.commit.replies} replies`,
+      ...t.replies.slice(0, 5).map(r => `  reply ${line(r)}`),
+    ].join('\n'),
+  )
 }
 
 const timeout = <T,>($: EngineInterface, p: Promise<T>, ms: number): Promise<T | undefined> =>
