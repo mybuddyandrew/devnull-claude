@@ -42,7 +42,6 @@ export type Feed = {
   error?: string
   commits: CommitRow[]
   notifications: NoteRow[]
-  fetchedAt?: number
   nextCursor?: string
 }
 
@@ -57,12 +56,8 @@ export type Compose = {
   mode: 'new' | 'reply' | 'quote'
   targetId?: string
   targetHandle?: string
-  isSending: boolean
-  error?: string
-  // bumped after a send so the field draws empty again
+  // bumped after a post is offered so the field draws empty again
   round: number
-  // text the field starts with, e.g. a draft Claude wrote
-  draft?: string
 }
 
 // The ship-to-/dev/null band: a draft post made from work just shipped in this session.
@@ -214,8 +209,6 @@ declare module 'claude-code' {
       thread: Thread | null
       // commits whose replies are open inline in the pane, by commit id
       openReplies: Record<string, { status: 'loading' | 'ready' | 'failed'; replies: CommitRow[]; error?: string }>
-      // each log tab's last-loaded list, shown at once when you switch back to it while it refreshes
-      tabCache: Record<string, { commits: CommitRow[]; notifications: NoteRow[]; nextCursor?: string }>
       // image URL → small JPEG data: URI, fetched once per session, drawn inline within a budget
       pictures: Record<string, string>
     }

@@ -4,8 +4,10 @@ import type { EngineInterface } from 'claude-code'
 
 import type { CommitRow } from '../types'
 
-import { api, loadAvatars } from './core'
-import { dataList, toCommitRow } from './devnull'
+import { api } from './api'
+import { loadAvatars } from './images'
+import { dataList } from './json'
+import { toCommitRow } from './rows'
 import { INITIAL_OPEN_REPLIES } from './state'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.

@@ -1,8 +1,8 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { toConversationRow, toMessageRow } from './devnull'
-import { remotesOf } from './remotes'
+import { toConversationRow, toMessageRow } from './rows'
+import { remotesOf } from './me'
 
 const PANE = {
   component: 'Pane',

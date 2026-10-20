@@ -1,10 +1,9 @@
 import type { Register } from 'claude-code'
 
 import { finish, logout, poll, startLogin, syncLogin, type Pending } from './login'
-import { offerFromPrompt } from './feed'
 import { openPane, registerPane } from './pane'
 import { resumeThread, sendFromPrompt } from './remotes'
-import { draftFromSession, registerShip, reviseDraft } from './ship'
+import { draftFromSession, offerFromPrompt, registerShip, reviseDraft } from './ship'
 import { registerStreaks, startStreaks } from './streaks'
 import { registerTools, startTools } from './tools'
 import { loadFollowing, registerTranscript, showCommit } from './transcript'

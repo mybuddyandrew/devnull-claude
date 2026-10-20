@@ -1,6 +1,6 @@
 # Third-party notices
 
-The API client in `hooks/devnull.ts` and `hooks/register.tsx` (request signing, the sign-in flow, and the mapping of API responses) is a TypeScript port of code from [nativephp/dev-null-app](https://github.com/nativephp/dev-null-app), used under its MIT License, reproduced below.
+The API client in `hooks/sign.ts`, `hooks/api.ts`, `hooks/rows.ts` and `hooks/login.ts` (request signing, the sign-in flow, and the mapping of API responses) is a TypeScript port of code from [nativephp/dev-null-app](https://github.com/nativephp/dev-null-app), used under its MIT License, reproduced below.
 
 The lane colours are the dark-theme palette of [dev-null.sh](https://dev-null.sh).
 

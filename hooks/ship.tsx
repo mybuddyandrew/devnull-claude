@@ -5,15 +5,18 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { Ship } from '../types'
-import { mentionsIn } from './devnull'
-import { aim, draftInComposer, noteReply, postCommit, refresh } from './feed'
+import { postCommit } from './commits'
+import { emojify } from './emoji'
+import { aim, draftInComposer, noteReply, refresh } from './feed'
 import { sendMessage } from './remotes'
-import { BIN, DANGER, INITIAL_SHIP, MUTED } from './state'
+import { BIN, DANGER, INITIAL_COMPOSE, INITIAL_SHIP, MUTED, POST_MAX, POST_MIN } from './state'
+import { mentionsIn } from './text'
 
+// $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
 const ship = atom({ plugin: 'devnull', key: 'ship' } as const, INITIAL_SHIP)
+const compose = atom({ plugin: 'devnull', key: 'compose' } as const, INITIAL_COMPOSE)
 
 const POSTED_MS = 8000
-const MAX_CHARS = 4000
 
 const STYLE = 'Plain text, first person, casual dev voice, under 280 characters unless asked for more, no hashtags, no emojis unless natural, no hype, no quotes around it. Never include anything from /dev/null Remotes (private messages). Reply with the post text only.'
 const SHIPPED_ASK = `Write ONE post for /dev/null, a small social network for developers, about what I just shipped and why, based on this session. ${STYLE}`
@@ -27,7 +30,7 @@ function clean(text: string): string {
   let t = text.trim()
   const pairs: [string, string][] = [['"', '"'], ["'", "'"], ['`', '`'], ['“', '”']]
   for (const [a, b] of pairs) if (t.length > 1 && t.startsWith(a) && t.endsWith(b)) t = t.slice(1, -1).trim()
-  return t.slice(0, MAX_CHARS)
+  return t.slice(0, POST_MAX)
 }
 
 // Pulls the shipped thing out of a finished Bash call, or undefined when it shipped nothing.
@@ -43,29 +46,33 @@ async function sourceOf($: EngineInterface, command: string, ran: { text?: strin
   return undefined
 }
 
-// Asks the model for a draft: a question over this session's conversation, or a small model on the prompt alone.
+// Asks a question over this session's conversation, or failing that a small model on the prompt alone; answers
+// the cleaned text, or why there is none.
+async function askModel($: EngineInterface, prompt: string, maxTokens: number, timeoutMs: number): Promise<{ text?: string; reason: string }> {
+  let reason = 'no reply'
+  try {
+    const r = await $.model.fork({ prompt })
+    if (r.isAnswered && r.text.trim()) return { text: clean(r.text), reason }
+    if (!r.isAnswered) reason = r.reason
+  } catch (error) {
+    reason = (error as Error).message
+  }
+  try {
+    const r = await $.model.complete({ model: 'haiku', prompt, maxTokens, timeoutMs })
+    if (r.isAnswered && r.text.trim()) return { text: clean(r.text), reason }
+    if (!r.isAnswered) reason = `${reason}; ${r.reason}`
+  } catch (error) {
+    reason = `${reason}; ${(error as Error).message}`
+  }
+  return { reason }
+}
+
+// Asks the model for a draft post and puts it in the band.
 async function draft($: EngineInterface, kind: 'ship' | 'session', source: string, prompt: string): Promise<void> {
   const now = await read($, ship)
   if (now.status === 'drafting' || now.status === 'posting' || (now.status === 'ready' && now.source === source && now.kind === kind)) return
   await update($, ship, (s): Ship => ({ status: 'drafting', kind, source, round: s.round }))
-  let text: string | undefined
-  let reason = 'no reply'
-  try {
-    const r = await $.model.fork({ prompt })
-    if (r.isAnswered && r.text.trim()) text = clean(r.text)
-    else if (!r.isAnswered) reason = r.reason
-  } catch (error) {
-    reason = (error as Error).message
-  }
-  if (!text) {
-    try {
-      const r = await $.model.complete({ model: 'haiku', prompt, maxTokens: 200, timeoutMs: 20000 })
-      if (r.isAnswered && r.text.trim()) text = clean(r.text)
-      else if (!r.isAnswered) reason = `${reason}; ${r.reason}`
-    } catch (error) {
-      reason = `${reason}; ${(error as Error).message}`
-    }
-  }
+  const { text, reason } = await askModel($, prompt, 200, 20000)
   // A dismissal or a newer draft while the model worked wins.
   const after = await read($, ship)
   if (after.status !== 'drafting' || after.source !== source) return
@@ -88,17 +95,7 @@ export async function reviseDraft($: EngineInterface, instructions: string): Pro
   const before = now.draft
   await update($, ship, (s): Ship => ({ ...s, status: 'drafting', source: 'your changes' }))
   const prompt = `Here is a draft post for /dev/null, a small social network for developers:\n\n${before}\n\nRewrite it: ${ask}. Keep its @mentions and links unless asked to change them. ${STYLE}`
-  let text: string | undefined
-  try {
-    const r = await $.model.fork({ prompt })
-    if (r.isAnswered && r.text.trim()) text = clean(r.text)
-  } catch {}
-  if (!text) {
-    try {
-      const r = await $.model.complete({ model: 'haiku', prompt, maxTokens: 1200, timeoutMs: 30000 })
-      if (r.isAnswered && r.text.trim()) text = clean(r.text)
-    } catch {}
-  }
+  const { text } = await askModel($, prompt, 1200, 30000)
   // Back to the draft as it was, or the rewrite, still waiting for Post.
   await update($, ship, (s): Ship => ({ ...s, status: 'ready', source: now.source, draft: text ?? before, ...(text ? {} : { error: 'Could not revise it; the draft is unchanged.' }) }))
   return text ? 'Revised. It is waiting above the prompt.' : 'Could not revise it; the draft is unchanged.'
@@ -115,7 +112,21 @@ export async function offerPost($: EngineInterface, text: string, to?: Ship['to'
         : byClaude
           ? 'Drafted by Claude'
           : 'Your post'
-  await update($, ship, (s): Ship => ({ status: 'ready', kind: byClaude && !to ? 'session' : 'typed', source, draft: text.slice(0, MAX_CHARS), round: s.round + 1, ...(to ? { to } : {}) }))
+  await update($, ship, (s): Ship => ({ status: 'ready', kind: byClaude && !to ? 'session' : 'typed', source, draft: text.slice(0, POST_MAX), round: s.round + 1, ...(to ? { to } : {}) }))
+}
+
+// /devnull post <text>: offers what was typed in the main prompt box in the band above the prompt, aimed at
+// whatever the composer is aimed at (a reply or a quote when one is set). Nothing is posted until Post is pressed.
+export async function offerFromPrompt($: EngineInterface, text: string): Promise<string> {
+  if (!(await $.store.get('username'))) return 'Not signed in to /dev/null. Run /devnull login first.'
+  // :rocket: → 🚀, as GitHub writes shortcodes.
+  const body = emojify(text.trim())
+  if (body.length < POST_MIN) return `Nothing to post: write at least ${POST_MIN} characters after /devnull post.`
+  if (body.length > POST_MAX) return `Not posted: /dev/null takes up to ${POST_MAX} characters and this is ${body.length}.`
+  const c = await read($, compose)
+  const to = c.mode !== 'new' && c.targetId ? { mode: c.mode, id: c.targetId, ...(c.targetHandle ? { handle: c.targetHandle } : {}) } : undefined
+  await offerPost($, body, to)
+  return 'Ready above the prompt: press Post (or p) to send it, Edit to change it, or Dismiss.'
 }
 
 async function dismiss($: EngineInterface): Promise<void> {

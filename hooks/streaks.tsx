@@ -3,8 +3,10 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { Live, Stats } from '../types'
-import { api } from './core'
-import { loadInbox, remotesOf } from './remotes'
+import { num, obj } from './json'
+import { api } from './api'
+import { readMe, setLive } from './me'
+import { loadInbox } from './remotes'
 import { INITIAL_FEED, INITIAL_LIVE, INITIAL_STATS, INITIAL_TAB } from './state'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
@@ -17,9 +19,6 @@ const tab = atom({ plugin: 'devnull', key: 'tab' } as const, INITIAL_TAB)
 const TICK_MS = 60_000
 const STATS_MAX_AGE_MS = 10 * 60_000
 
-type Json = Record<string, unknown>
-const obj = (v: unknown): Json => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {})
-const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 
 // GET users/{me} signed: the profile with its streaks, achievements and activity buckets.
 export const toStats = (username: string, json: unknown, nowMs: number): Stats => {
@@ -110,11 +109,8 @@ export async function loadStats($: EngineInterface): Promise<void> {
 async function tick($: EngineInterface): Promise<void> {
   if (!(await $.store.get('username'))) return
   try {
-    const me = (await api($, 'GET', 'me')) as { unread_notifications_count?: unknown; data?: { id?: unknown } }
-    const unread = num(me.unread_notifications_count) ?? 0
-    if (me.data?.id !== undefined && me.data.id !== null) await $.store.set('userId', String(me.data.id))
     // Remotes appear once dev-null.sh's API has them and you have them switched on.
-    const remotes = remotesOf(me)
+    const { unread, remotes } = await readMe($)
     const showing = await read($, tab)
     const newest = (await read($, feed)).commits[0]?.id
     let newCount = 0
@@ -122,10 +118,7 @@ async function tick($: EngineInterface): Promise<void> {
       const json = (await api($, 'GET', `log/${showing}`, { since: newest })) as { new_commits_count?: unknown }
       newCount = num(json.new_commits_count) ?? 0
     }
-    // Written only when a count changed: every write redraws the pane, and a redraw under a click drops it.
-    const next: Live = { newCount, unread, remotesOn: remotes.on, remotesUnread: remotes.unread }
-    const before = await read($, live)
-    if (JSON.stringify({ ...before, ...next }) !== JSON.stringify(before)) await update($, live, (l): Live => ({ ...l, ...next }))
+    await setLive($, { newCount, unread, remotesOn: remotes.on, remotesUnread: remotes.unread })
     // The open inbox keeps itself current, as the phone app's does, quietly.
     if (remotes.on && showing === 'remotes') await loadInbox($, undefined, false, true)
   } catch {}

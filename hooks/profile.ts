@@ -3,8 +3,11 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Profile, ProfileView } from '../types'
-import { api, loadAvatars, loadPictures } from './core'
-import { dataList, isHandle, laneColor, toCommitRow } from './devnull'
+import { api } from './api'
+import { loadAvatars, loadPictures } from './images'
+import { dataList, num, obj, str } from './json'
+import { laneColor, toCommitRow } from './rows'
+import { isHandle } from './text'
 import { INITIAL_PROFILE } from './state'
 import { toStats } from './streaks'
 import { rememberPeople } from './transcript'
@@ -12,10 +15,6 @@ import { rememberPeople } from './transcript'
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
 const profile = atom({ plugin: 'devnull', key: 'profile' } as const, INITIAL_PROFILE)
 
-type Json = Record<string, unknown>
-const obj = (v: unknown): Json => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {})
-const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() !== '' ? v : undefined)
-const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 
 // GET users/{username}, signed: the user under `data`, the rest beside it.
 export const toProfileView = (username: string, json: unknown, me: string | undefined, nowMs: number): ProfileView => {

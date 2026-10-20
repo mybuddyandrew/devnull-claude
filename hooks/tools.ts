@@ -1,11 +1,15 @@
 // Tools the model can call to read /dev/null and draft (never post) commits.
 import type { EngineInterface, On } from 'claude-code'
 
-import { api, commitPath, nextCursorOf } from './core'
-import { NOTE_KINDS, ago, dataList, isHandle, threadPath, toCommitRow, toConversationRow, toMessageRow, toNoteRow, untrusted } from './devnull'
-import { myUserId } from './remotes'
+import { api, nextCursorOf, threadPath } from './api'
+import { fetchThread } from './commits'
+import { dataList } from './json'
+import { NOTE_KINDS, toCommitRow, toConversationRow, toMessageRow, toNoteRow } from './rows'
+import { ago, isHandle, untrusted } from './text'
+import { myUserId } from './me'
 import type { CommitRow } from '../types'
 import { offerPost } from './ship'
+import { MESSAGE_MAX, POST_MAX, POST_MIN } from './state'
 
 const MAX_CHARS = 8000
 const LINE_BODY = 280
@@ -142,13 +146,8 @@ async function feed($: EngineInterface, e: Record<string, unknown>): Promise<str
 async function thread($: EngineInterface, e: Record<string, unknown>): Promise<string> {
   const id = commitIdOf(e.commit)
   if (!id) return 'dev-null.sh error: give a full commit id (uuid) or a dev-null.sh commit link.'
-  const json = (await api($, 'GET', `commits/${encodeURIComponent(id)}`)) as { data?: Record<string, unknown>; ancestors?: unknown }
-  const replies = await api($, 'GET', commitPath(id, 'replies'))
+  const { commit: row, ancestors, replies: answers, hasMoreReplies: more } = await fetchThread($, id)
   const now = await $.clock.now()
-  const ancestors = dataList({ data: json.ancestors }).map(toCommitRow)
-  const row = toCommitRow(json.data ?? {})
-  const answers = dataList(replies).map(toCommitRow)
-  const more = nextCursorOf(replies)
   const lines: string[] = []
   if (ancestors.length) lines.push('Ancestors (oldest first):', ...ancestors.map(r => commitLine(r, now)), '')
   lines.push('Commit:', `[${row.hash} id=${row.id}] @${row.username}${row.name ? ` (${row.name})` : ''} · ${ago(row.createdAt, now)} · ★${row.stars} ↩${row.replies}`, row.body)
@@ -204,7 +203,7 @@ async function notifications($: EngineInterface, e: Record<string, unknown>): Pr
 
 async function draft($: EngineInterface, e: Record<string, unknown>): Promise<string> {
   const body = typeof e.text === 'string' ? e.text.trim() : ''
-  if (body.length < 3 || body.length > 4000) return 'dev-null.sh error: draft text must be 3 to 4000 characters.'
+  if (body.length < POST_MIN || body.length > POST_MAX) return `dev-null.sh error: draft text must be ${POST_MIN} to ${POST_MAX} characters.`
   const reply = commitIdOf(e.reply_to)
   const quote = commitIdOf(e.quote)
   await offerPost($, body, reply ? { mode: 'reply', id: reply } : quote ? { mode: 'quote', id: quote } : undefined, true)
@@ -261,7 +260,7 @@ async function remoteDraft($: EngineInterface, e: Record<string, unknown>): Prom
   const body = text(e.text)
   if (!isHandle(username)) return 'Give a valid username.'
   if (!body) return 'Nothing to draft.'
-  if (body.length > 2000) return `Too long: Remotes take up to 2000 characters and this is ${body.length}.`
+  if (body.length > MESSAGE_MAX) return `Too long: Remotes take up to ${MESSAGE_MAX} characters and this is ${body.length}.`
   await offerPost($, body, { mode: 'remote', id: username, isOrg: false }, true)
   return 'Draft shown above the prompt box. Nothing is sent until the user presses Push.'
 }
