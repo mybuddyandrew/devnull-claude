@@ -8,6 +8,7 @@ import type { Ship } from '../types'
 import { postCommit } from './commits'
 import { emojify } from './emoji'
 import { aim, draftInComposer, noteReply, refresh } from './feed'
+import { rememberPresses } from './presses'
 import { startCommand } from './prompt'
 import { sendMessage } from './remotes'
 import { BIN, DANGER, INITIAL_COMPOSE, INITIAL_SHIP, MUTED, POST_MAX, POST_MIN } from './state'
@@ -291,7 +292,9 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
 
     // What other mods draw in the band stays, under this one; no width here, so theirs lays out as it would.
     const below = await next(e)
-    return (
+    return rememberPresses(
+      e.component,
+      e.requestId,
       <Box key={`ship-${s.round}`} flexDirection="column">
         <Box flexDirection="column" paddingX={1}>
           {body}

@@ -12,6 +12,7 @@ import { makeKit } from './pane-kit'
 import { drawProfile } from './pane-profile'
 import { drawRemotes } from './pane-remotes'
 import { registerScroll } from './pane-scroll'
+import { rememberPresses } from './presses'
 import { drawTop } from './pane-top'
 import { DANGER, INITIAL_LOGIN, INITIAL_PROFILE, INITIAL_TAB, MUTED, PANE } from './state'
 
@@ -67,7 +68,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
 
 // Draws the pane; register.tsx hands this file its `on`.
 export function registerPane(on: On): void {
-  on('ui.render', { component: 'Pane', requestId: PANE }, ($, e) => drawPane($, e))
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => rememberPresses(e.component, e.requestId, await drawPane($, e)))
   registerScroll(on)
   // A closed pane polls nothing: an open Remotes thread picks its poll up again when the pane reopens.
   on('ui.close', { id: PANE }, async ($, e, next) => {

@@ -212,3 +212,42 @@ test('what you type in the pane field survives a redraw', async ($, on) => {
   expect((await ui.find({ key: 'compose-0' }))?.props.value).toBe('half typed')
   await ui.unmount()
 })
+
+test('the log, a profile and the post band draw on every surface', async ($, on) => {
+  server(on, f => {
+    if (f.path === '/api/v1/users/user1') return { body: { data: { username: 'user1', name: 'User 1', bio: 'hi' }, streaks: { current: 2, longest: 5 } } }
+    if (f.path === '/api/v1/users/user1/commits') return { body: { data: [commit(7)] } }
+    if (f.path === '/api/v1/log/following') return { body: { data: [commit(1, { images: [{ url: 'https://cdn.dev-null.sh/a.png', width: 400, height: 300 }] }), commit(2)], meta: {} } }
+    return { body: { data: { id: 'u1' } } }
+  })
+  on('ui.render', { component: 'AbovePrompt' }, async () => ({ type: 'Box', props: {}, children: [] }) as never)
+  await $.classic.SessionStart({ source: 'startup' })
+  await $.command.run({ command: 'devnull', args: '' } as never)
+  await $.command.run({ command: 'devnull', args: 'post hello every surface' } as never)
+  for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
+    const ui = await $.ui.mount({ plugin: 'devnull', surface, ...PANE })
+    expect(await ui.find({ key: `star-0-${ID(1)}` })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /couldn't draw/ })).toBeUndefined()
+    await ui.press({ key: `who-0-${ID(1)}` })
+    expect(await ui.find({ key: 'profile-back' })).toBeDefined()
+    expect(await ui.find({ key: `star-0-${ID(7)}` })).toBeDefined()
+    await ui.press({ key: 'profile-back' })
+    await ui.unmount()
+    const band = await $.ui.mount({ plugin: 'devnull', surface, component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 80, scroll: { offset: 0, bodyRows: 11 }, view: {} } })
+    expect(await band.find({ key: 'ship-post' })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /hello every surface/ })).toBeDefined()
+    await band.unmount()
+  }
+})
+
+test('a press whose drawing was replaced still lands, by the Button key', async ($, on) => {
+  const calls = server(on, f =>
+    f.path === `/api/v1/commits/${ID(1)}/star` ? { body: { data: commit(1, { stars_count: 1, starred: true }) } } : f.path === '/api/v1/log/following' ? { body: { data: [commit(1)], meta: {} } } : { body: { data: { id: 'u1' } } },
+  )
+  // Beneath the mod, an engine that has lost every handle: it runs no Button's own onPress.
+  on('ui.press', async (_$, e) => ({ element: e.element }))
+  const ui = await openPane($)
+  await ui.press({ key: `star-0-${ID(1)}` })
+  expect(calls.some(c => c.method === 'POST' && c.path === `/api/v1/commits/${ID(1)}/star`)).toBe(true)
+  await ui.unmount()
+})

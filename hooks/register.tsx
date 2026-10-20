@@ -2,6 +2,7 @@ import type { Register } from 'claude-code'
 
 import { finish, logout, poll, startLogin, syncLogin, type Pending } from './login'
 import { openPane, registerPane } from './pane'
+import { registerPresses } from './presses'
 import { resumeThread, sendFromPrompt } from './remotes'
 import { draftFromSession, offerFromPrompt, registerShip, reviseDraft } from './ship'
 import { refresh } from './feed'
@@ -68,6 +69,7 @@ export const register: Register = (on, options) => {
   })
 
   registerPane(on)
+  registerPresses(on)
   registerShip(on, options)
   registerTools(on)
   registerTranscript(on)
