@@ -49,25 +49,30 @@ export const remotesOf = (me: unknown): { on: boolean; unread: number } => {
   return { on: true, unread: num(obj(r).unread_count) }
 }
 
-export async function loadInbox($: EngineInterface, section?: InboxSection, more = false): Promise<void> {
+// quiet: a background recheck (the minute tick), which shows no loader and writes only when something changed,
+// since every write redraws the pane and a redraw under a click drops the click.
+export async function loadInbox($: EngineInterface, section?: InboxSection, more = false, quiet = false): Promise<void> {
   const now = await read($, inbox)
   const tab = section ?? now.section
   const before = more ? now.rows[now.rows.length - 1]?.id : undefined
-  await update($, inbox, (i): Inbox => ({ ...i, section: tab, isLoading: true, error: undefined, ...(more ? {} : tab !== i.section ? { rows: [] } : {}) }))
+  if (!quiet) await update($, inbox, (i): Inbox => ({ ...i, section: tab, isLoading: true, error: undefined, ...(more ? {} : tab !== i.section ? { rows: [] } : {}) }))
   try {
     const me = await myUserId($)
     const json = obj(await api($, 'GET', 'remotes', { tab, before }))
     const found = rows(json.data).map(c => toConversationRow(c, me))
-    await update($, inbox, (i): Inbox => ({
-      ...i,
+    const current = await read($, inbox)
+    const next: Inbox = {
+      ...current,
       section: tab,
       isLoading: false,
-      rows: more ? [...i.rows, ...found] : found,
+      rows: more ? [...current.rows, ...found] : found,
       hasMore: json.has_more === true,
       unread: num(json.unread_count),
       requests: num(json.requests_count),
-    }))
-    await update($, live, (l): Live => ({ ...l, remotesOn: true, remotesUnread: num(json.unread_count) }))
+    }
+    if (JSON.stringify(next) !== JSON.stringify(current)) await update($, inbox, (): Inbox => next)
+    const l = await read($, live)
+    if (l.remotesOn !== true || l.remotesUnread !== num(json.unread_count)) await update($, live, (x): Live => ({ ...x, remotesOn: true, remotesUnread: num(json.unread_count) }))
     void loadAvatars($, found.map((r): [string, string | undefined] => [r.avatarUser ?? r.title, r.avatarUrl]))
   } catch (error) {
     if (isNotFound(error)) await update($, live, (l): Live => ({ ...l, remotesOn: false }))
@@ -147,7 +152,8 @@ export async function pollThread($: EngineInterface): Promise<void> {
     const json = await api($, 'GET', `${threadPath(t.isOrg, t.target)}/messages`, { after: String(last), reactions_after: String(t.reactionsVersion) })
     const fields = await threadFields($, json)
     const changes = rows(obj(obj(json).data).reaction_changes)
-    await update($, thread, (now): Thread | null => {
+    // Worked out first and written only when something changed: this runs every few seconds.
+    const merge = (now: Thread | null): Thread | null => {
       if (!now || now.target !== t.target) return now
       const known = new Set(now.messages.map(m => m.id))
       const fresh = fields.messages.filter(m => !known.has(m.id))
@@ -167,7 +173,10 @@ export async function pollThread($: EngineInterface): Promise<void> {
         partnerReadThrough: Math.max(now.partnerReadThrough, fields.partnerReadThrough ?? 0),
         reactionsVersion: Math.max(now.reactionsVersion, fields.reactionsVersion ?? 0),
       }
-    })
+    }
+    const current = await read($, thread)
+    const next = merge(current)
+    if (JSON.stringify(next) !== JSON.stringify(current)) await update($, thread, (now): Thread | null => merge(now))
     await markRead($)
   } catch {}
 }
@@ -302,6 +311,7 @@ export async function checkRemotes($: EngineInterface): Promise<void> {
     const id = obj(obj(me).data).id
     if (id !== undefined && id !== null) await $.store.set('userId', String(id))
     const r = remotesOf(me)
-    await update($, live, (l): Live => ({ ...l, remotesOn: r.on, remotesUnread: r.unread }))
+    const l = await read($, live)
+    if (l.remotesOn !== r.on || l.remotesUnread !== r.unread) await update($, live, (x): Live => ({ ...x, remotesOn: r.on, remotesUnread: r.unread }))
   } catch {}
 }

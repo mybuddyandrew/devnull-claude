@@ -102,10 +102,13 @@ export async function loadAvatars($: EngineInterface, people: [string, string | 
   const have = await read($, avatars)
   const wanted = new Map(people.filter((p): p is [string, string] => !!p[1] && !((have[p[0]]?.length ?? Infinity) <= AVATAR_MAX_CHARS)))
   const queue = [...wanted]
+  // Collected, then written once: every write redraws the pane, and a redraw under a click drops the click.
+  const got: Record<string, string> = {}
   const worker = async () => {
     for (let next = queue.shift(); next; next = queue.shift()) await fetchAvatar(next)
   }
   await Promise.all([worker(), worker(), worker(), worker()])
+  if (Object.keys(got).length > 0) await update($, avatars, a => ({ ...a, ...got }))
 
   async function fetchAvatar([username, url]: [string, string]): Promise<void> {
     {
@@ -117,7 +120,7 @@ export async function loadAvatars($: EngineInterface, people: [string, string | 
         const out = await $.process.run(['/bin/sh', '-c', script, 'sh', sized])
         const b64 = out.stdout.replace(/\s+/g, '')
         if (out.exitCode !== 0 || b64 === '' || b64.length > AVATAR_MAX_CHARS) return
-        await update($, avatars, a => ({ ...a, [username]: `data:image/jpeg;base64,${b64}` }))
+        got[username] = `data:image/jpeg;base64,${b64}`
       } catch {}
     }
   }
@@ -130,10 +133,13 @@ export const commitPath = (id: string, rest: string) => `commits/${encodeURIComp
 export async function loadPictures($: EngineInterface, urls: readonly string[]): Promise<void> {
   const have = await read($, pictures)
   const queue = [...new Set(urls)].filter(u => u.startsWith('https://') && have[u] === undefined)
+  // Collected, then written once, as avatars are.
+  const got: Record<string, string> = {}
   const worker = async () => {
     for (let url = queue.shift(); url; url = queue.shift()) await fetchPicture(url)
   }
   await Promise.all([worker(), worker(), worker()])
+  if (Object.keys(got).length > 0) await update($, pictures, p => ({ ...p, ...got }))
 
   async function fetchPicture(url: string): Promise<void> {
     try {
@@ -142,7 +148,7 @@ export async function loadPictures($: EngineInterface, urls: readonly string[]):
       const b64 = out.stdout.replace(/\s+/g, '')
       // An empty string marks one that failed or ran too large, so it isn't fetched again this session.
       const value = out.exitCode === 0 && b64 !== '' && b64.length <= PICTURE_MAX_CHARS ? `data:image/jpeg;base64,${b64}` : ''
-      await update($, pictures, p => ({ ...p, [url]: value }))
+      got[url] = value
     } catch {}
   }
 }

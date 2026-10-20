@@ -122,9 +122,12 @@ async function tick($: EngineInterface): Promise<void> {
       const json = (await api($, 'GET', `log/${showing}`, { since: newest })) as { new_commits_count?: unknown }
       newCount = num(json.new_commits_count) ?? 0
     }
-    await update($, live, (): Live => ({ newCount, unread, remotesOn: remotes.on, remotesUnread: remotes.unread }))
-    // The open inbox keeps itself current, as the phone app's does.
-    if (remotes.on && showing === 'remotes') await loadInbox($)
+    // Written only when a count changed: every write redraws the pane, and a redraw under a click drops it.
+    const next: Live = { newCount, unread, remotesOn: remotes.on, remotesUnread: remotes.unread }
+    const before = await read($, live)
+    if (JSON.stringify({ ...before, ...next }) !== JSON.stringify(before)) await update($, live, (l): Live => ({ ...l, ...next }))
+    // The open inbox keeps itself current, as the phone app's does, quietly.
+    if (remotes.on && showing === 'remotes') await loadInbox($, undefined, false, true)
   } catch {}
   const s = await read($, stats)
   const now = await $.clock.now()
