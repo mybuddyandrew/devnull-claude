@@ -2,9 +2,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import { BASE_URL, NAMESPACE, hex, randomBytes, signingMessage, target, unarmor } from './devnull'
+import { BASE_URL, NAMESPACE, hex, randomBytes, safeImageUrl, signingMessage, target, unarmor } from './devnull'
 import {
   AVATAR_MAX_CHARS,
+  BIN,
+  HANDLER_VERSION,
   INITIAL_AVATARS,
   INITIAL_PICTURES,
   LSREGISTER,
@@ -28,40 +30,53 @@ export async function run($: EngineInterface, argv: string[], stdin?: string): P
   return out.stdout
 }
 
-// This device's key: made once, kept in ~/.devnull-claude, never leaves the machine.
+// This device's key: made once, kept in ~/.devnull-claude, never leaves the machine. The folder and key are
+// set to owner-only each time, so one created or loosened elsewhere is tightened.
 export async function ensureKey($: EngineInterface, p: Paths): Promise<void> {
-  if (await $.fs.exists(p.key)) return
-  await run($, ['mkdir', '-p', '-m', '700', p.dir])
-  await run($, ['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'devnull-claude-code', '-f', p.key])
+  await run($, [BIN.mkdir, '-p', '-m', '700', p.dir])
+  await run($, [BIN.chmod, '700', p.dir])
+  if (!(await $.fs.exists(p.key))) await run($, [BIN.sshKeygen, '-q', '-t', 'ed25519', '-N', '', '-C', 'devnull-claude-code', '-f', p.key])
+  await run($, [BIN.chmod, '600', p.key])
 }
 
 // dev-null.sh only sends its code back to devnull://, so a tiny local applet
 // claims that scheme and drops the URL in a file this mod polls.
+// It writes only the login callback (devnull://auth/callback…, at most 4 KB) and ignores any other devnull://
+// link a page or app might open. Rebuilt when HANDLER_VERSION changes.
 export async function ensureHandler($: EngineInterface, p: Paths): Promise<void> {
-  if (await $.fs.exists(p.app)) return
+  const marker = `${p.dir}/handler-version`
+  const built = (await $.fs.exists(marker)) ? (await $.fs.read(marker)).trim() : ''
+  if (built === HANDLER_VERSION && (await $.fs.exists(p.app))) return
   const script = `${p.dir}/callback.applescript`
   await $.fs.write(
     script,
     [
       'on open location theURL',
-      `\tdo shell script "umask 077; printf '%s' " & quoted form of theURL & " > " & quoted form of "${p.callback}"`,
+      '\tif theURL starts with "devnull://auth/callback" and (length of theURL) < 4096 then',
+      `\t\tdo shell script "umask 077; printf '%s' " & quoted form of theURL & " > " & quoted form of ${appleString(p.callback)}`,
+      '\tend if',
       'end open location',
       '',
     ].join('\n'),
   )
   const plist = `${p.app}/Contents/Info.plist`
-  await run($, ['osacompile', '-o', p.app, script])
-  await run($, ['plutil', '-insert', 'CFBundleURLTypes', '-json', '[{"CFBundleURLName":"sh.dev-null.claude-callback","CFBundleURLSchemes":["devnull"]}]', plist])
-  await run($, ['plutil', '-replace', 'CFBundleIdentifier', '-string', 'sh.dev-null.claude-callback', plist])
-  await run($, ['plutil', '-insert', 'LSBackgroundOnly', '-bool', 'YES', plist])
-  await run($, ['codesign', '--force', '--deep', '--sign', '-', p.app])
+  await run($, [BIN.rm, '-rf', p.app])
+  await run($, [BIN.osacompile, '-o', p.app, script])
+  await run($, [BIN.plutil, '-insert', 'CFBundleURLTypes', '-json', '[{"CFBundleURLName":"sh.dev-null.claude-callback","CFBundleURLSchemes":["devnull"]}]', plist])
+  await run($, [BIN.plutil, '-replace', 'CFBundleIdentifier', '-string', 'sh.dev-null.claude-callback', plist])
+  await run($, [BIN.plutil, '-insert', 'LSBackgroundOnly', '-bool', 'YES', plist])
+  await run($, [BIN.codesign, '--force', '--deep', '--sign', '-', p.app])
   await run($, [LSREGISTER, '-f', p.app])
+  await $.fs.write(marker, HANDLER_VERSION)
 }
+
+// An AppleScript string literal: quotes and backslashes escaped.
+const appleString = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 
 export async function signedHeaders($: EngineInterface, p: Paths, method: string, tgt: string, body: string) {
   const timestamp = String(Math.floor((await $.clock.now()) / 1000))
   const nonce = hex(randomBytes(16))
-  const armored = await run($, ['ssh-keygen', '-Y', 'sign', '-n', NAMESPACE, '-f', p.key], signingMessage(timestamp, nonce, method, tgt, body))
+  const armored = await run($, [BIN.sshKeygen, '-Y', 'sign', '-n', NAMESPACE, '-f', p.key], signingMessage(timestamp, nonce, method, tgt, body))
   return { 'X-Devnull-Timestamp': timestamp, 'X-Devnull-Nonce': nonce, 'X-SSH-Signature': unarmor(armored) }
 }
 
@@ -113,13 +128,11 @@ export async function loadAvatars($: EngineInterface, people: [string, string | 
   async function fetchAvatar([username, url]: [string, string]): Promise<void> {
     {
       try {
-        const sized = url + (url.includes('?') ? '&' : '?') + 's=64'
+        if (!safeImageUrl(url)) return
         // Every avatar rides inside the drawn tree, which the desktop drops past a few hundred KB:
         // sips shrinks each to a small JPEG (about 2.5 KB of base64).
-        const script = 't=$(mktemp); curl -sfL --max-time 10 "$1" -o "$t" && sips -s format jpeg -s formatOptions 55 -Z 64 "$t" --out "$t.jpg" >/dev/null 2>&1 && base64 < "$t.jpg"; rm -f "$t" "$t.jpg"'
-        const out = await $.process.run(['/bin/sh', '-c', script, 'sh', sized])
-        const b64 = out.stdout.replace(/\s+/g, '')
-        if (out.exitCode !== 0 || b64 === '' || b64.length > AVATAR_MAX_CHARS) return
+        const b64 = await fetchJpeg($, url + (url.includes('?') ? '&' : '?') + 's=64', 64, 55, 10)
+        if (b64 === '' || b64.length > AVATAR_MAX_CHARS) return
         got[username] = `data:image/jpeg;base64,${b64}`
       } catch {}
     }
@@ -132,7 +145,7 @@ export const commitPath = (id: string, rest: string) => `commits/${encodeURIComp
 // own), at most 260px and 16 KB each, a few at a time; any that fail or run larger are left as links.
 export async function loadPictures($: EngineInterface, urls: readonly string[]): Promise<void> {
   const have = await read($, pictures)
-  const queue = [...new Set(urls)].filter(u => u.startsWith('https://') && have[u] === undefined)
+  const queue = [...new Set(urls)].filter(u => safeImageUrl(u) && have[u] === undefined)
   // Collected, then written once, as avatars are.
   const got: Record<string, string> = {}
   const worker = async () => {
@@ -143,12 +156,23 @@ export async function loadPictures($: EngineInterface, urls: readonly string[]):
 
   async function fetchPicture(url: string): Promise<void> {
     try {
-      const script = 't=$(mktemp); curl -sfL --max-time 15 "$1" -o "$t" && sips -s format jpeg -s formatOptions 45 -Z 260 "$t" --out "$t.jpg" >/dev/null 2>&1 && base64 < "$t.jpg"; rm -f "$t" "$t.jpg"'
-      const out = await $.process.run(['/bin/sh', '-c', script, 'sh', url], { timeoutMs: 30_000 })
-      const b64 = out.stdout.replace(/\s+/g, '')
+      const b64 = await fetchJpeg($, url, 260, 45, 15)
       // An empty string marks one that failed or ran too large, so it isn't fetched again this session.
-      const value = out.exitCode === 0 && b64 !== '' && b64.length <= PICTURE_MAX_CHARS ? `data:image/jpeg;base64,${b64}` : ''
-      got[url] = value
+      got[url] = b64 !== '' && b64.length <= PICTURE_MAX_CHARS ? `data:image/jpeg;base64,${b64}` : ''
     } catch {}
   }
+}
+
+// Fetches one image over https only (redirects included, at most 3), up to 5 MB, and returns it shrunk to a JPEG
+// no wider or taller than `size`, as base64; '' when anything fails.
+async function fetchJpeg($: EngineInterface, url: string, size: number, quality: number, seconds: number): Promise<string> {
+  const script = [
+    't=$(/usr/bin/mktemp) || exit 1',
+    `/usr/bin/curl -sfL --proto =https --proto-redir =https --max-redirs 3 --max-filesize 5000000 --max-time ${seconds} -o "$t" -- "$1"` +
+      ` && /usr/bin/sips -s format jpeg -s formatOptions ${quality} -Z ${size} "$t" --out "$t.jpg" >/dev/null 2>&1` +
+      ' && /usr/bin/base64 < "$t.jpg"',
+    's=$?; /bin/rm -f "$t" "$t.jpg"; exit $s',
+  ].join('\n')
+  const out = await $.process.run([BIN.sh, '-c', script, 'sh', url], { timeoutMs: (seconds + 15) * 1000 })
+  return out.exitCode === 0 ? out.stdout.replace(/\s+/g, '') : ''
 }

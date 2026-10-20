@@ -51,3 +51,18 @@ export const INITIAL_TAB_CACHE = {} as Record<string, { commits: CommitRow[]; no
 export const INITIAL_OPEN_REPLIES = {} as Record<string, { status: 'loading' | 'ready' | 'failed'; replies: CommitRow[]; error?: string }>
 // An open thread draws at most this many replies inline; the rest are a link away.
 export const MAX_INLINE_REPLIES = 20
+// Every command the mod runs, by its absolute macOS path, so nothing on PATH can stand in for one.
+export const BIN = {
+  sh: '/bin/sh',
+  mkdir: '/bin/mkdir',
+  chmod: '/bin/chmod',
+  rm: '/bin/rm',
+  sshKeygen: '/usr/bin/ssh-keygen',
+  open: '/usr/bin/open',
+  git: '/usr/bin/git',
+  osacompile: '/usr/bin/osacompile',
+  plutil: '/usr/bin/plutil',
+  codesign: '/usr/bin/codesign',
+} as const
+// Bumped when the devnull:// callback applet changes, so an older one is rebuilt.
+export const HANDLER_VERSION = '2'

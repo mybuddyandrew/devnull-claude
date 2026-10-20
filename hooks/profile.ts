@@ -4,7 +4,7 @@ import type { EngineInterface } from 'claude-code'
 
 import type { Profile, ProfileView } from '../types'
 import { api, loadAvatars, loadPictures } from './core'
-import { dataList, laneColor, toCommitRow } from './devnull'
+import { dataList, isHandle, laneColor, toCommitRow } from './devnull'
 import { INITIAL_PROFILE } from './state'
 import { toStats } from './streaks'
 import { rememberPeople } from './transcript'
@@ -51,7 +51,7 @@ export const toProfileView = (username: string, json: unknown, me: string | unde
 
 export async function openProfile($: EngineInterface, username: string): Promise<void> {
   const name = username.replace(/^@/, '').trim()
-  if (!name) return
+  if (!isHandle(name)) return
   await update($, profile, (): Profile | null => ({ username: name, status: 'loading', commits: [] }))
   try {
     const me = (await $.store.get('username')) as string | undefined
