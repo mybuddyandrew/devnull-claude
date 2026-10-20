@@ -4,6 +4,7 @@ import type { EngineInterface, On } from 'claude-code'
 
 import type { Live, Stats } from '../types'
 import { api } from './core'
+import { loadInbox, remotesOf } from './remotes'
 import { INITIAL_FEED, INITIAL_LIVE, INITIAL_STATS, INITIAL_TAB } from './state'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
@@ -91,6 +92,7 @@ export const statusLine = (s: Stats, l: Live): string => {
   if (s.rank) parts.push(s.rank)
   if (l.unread > 0) parts.push(`${l.unread} unread`)
   if (l.newCount > 0) parts.push(`${l.newCount} new`)
+  if (l.remotesOn && (l.remotesUnread ?? 0) > 0) parts.push(`${l.remotesUnread} in Remotes`)
   return `/dev/null: ${parts.join(' · ')}`
 }
 
@@ -108,16 +110,21 @@ export async function loadStats($: EngineInterface): Promise<void> {
 async function tick($: EngineInterface): Promise<void> {
   if (!(await $.store.get('username'))) return
   try {
-    const me = (await api($, 'GET', 'me')) as { unread_notifications_count?: unknown }
+    const me = (await api($, 'GET', 'me')) as { unread_notifications_count?: unknown; data?: { id?: unknown } }
     const unread = num(me.unread_notifications_count) ?? 0
+    if (me.data?.id !== undefined && me.data.id !== null) await $.store.set('userId', String(me.data.id))
+    // Remotes appear once dev-null.sh's API has them and you have them switched on.
+    const remotes = remotesOf(me)
     const showing = await read($, tab)
     const newest = (await read($, feed)).commits[0]?.id
     let newCount = 0
-    if (showing !== 'notifications' && showing !== 'trending' && newest) {
+    if (showing !== 'notifications' && showing !== 'trending' && showing !== 'remotes' && newest) {
       const json = (await api($, 'GET', `log/${showing}`, { since: newest })) as { new_commits_count?: unknown }
       newCount = num(json.new_commits_count) ?? 0
     }
-    await update($, live, (): Live => ({ newCount, unread }))
+    await update($, live, (): Live => ({ newCount, unread, remotesOn: remotes.on, remotesUnread: remotes.unread }))
+    // The open inbox keeps itself current, as the phone app's does.
+    if (remotes.on && showing === 'remotes') await loadInbox($)
   } catch {}
   const s = await read($, stats)
   const now = await $.clock.now()

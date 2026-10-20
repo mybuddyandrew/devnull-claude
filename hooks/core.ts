@@ -70,7 +70,7 @@ export async function api(
   method: string,
   path: string,
   params: Record<string, string | null | undefined> = {},
-  payload?: Record<string, string>,
+  payload?: Record<string, unknown>,
 ): Promise<unknown> {
   const p = await paths($)
   const tgt = target(path, params)
