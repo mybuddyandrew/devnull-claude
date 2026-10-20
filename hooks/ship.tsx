@@ -8,6 +8,7 @@ import type { Ship } from '../types'
 import { postCommit } from './commits'
 import { emojify } from './emoji'
 import { aim, draftInComposer, noteReply, refresh } from './feed'
+import { startCommand } from './prompt'
 import { sendMessage } from './remotes'
 import { BIN, DANGER, INITIAL_COMPOSE, INITIAL_SHIP, MUTED, POST_MAX, POST_MIN } from './state'
 import { mentionsIn } from './text'
@@ -209,7 +210,7 @@ async function edit($: EngineInterface): Promise<void> {
   const now = await read($, ship)
   if (!now.draft) return
   const to = now.to
-  if (to?.mode === 'remote') await $.prompt.fill({ text: `/devnull remote ${to.isOrg ? `org:${to.id}` : `@${to.id}`} ${now.draft}` }).catch(() => {})
+  if (to?.mode === 'remote') await startCommand($, `/devnull remote ${to.isOrg ? `org:${to.id}` : `@${to.id}`}`, now.draft)
   else await draftInComposer($, now.draft, to ? { mode: to.mode, targetId: to.id, targetHandle: to.handle } : {})
   await dismiss($)
 }
@@ -280,7 +281,7 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
           )}
           <Box flexDirection="row" columnGap={2} paddingTop={1}>
             <Button key="ship-post" variant="primary" hotkey="p" label={s.to?.mode === 'reply' ? 'Reply' : s.to?.mode === 'quote' ? 'Quote' : s.to?.mode === 'remote' ? 'Push' : 'Post'} onPress={() => void post($)} />
-            <Button key="ship-revise" label="✨ Revise" onPress={() => void $.prompt.fill({ text: '/devnull revise ' }).catch(() => {})} />
+            <Button key="ship-revise" label="✨ Revise" onPress={() => void startCommand($, '/devnull revise')} />
             <Button key="ship-edit" label="Edit" onPress={() => void edit($)} />
             {dismissButton}
           </Box>

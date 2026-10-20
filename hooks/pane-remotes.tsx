@@ -4,6 +4,7 @@ import type { EngineInterface } from 'claude-code'
 
 import type { ConversationRow, InboxSection, MessageRow } from '../types'
 import type { Kit } from './pane-kit'
+import { startCommand } from './prompt'
 import type { Top } from './pane-top'
 import { answerRequest, closeThread, loadInbox, openThread, pingTyping, retryMessage, setStashed, toggleReaction } from './remotes'
 import { DANGER, HAIRLINE, INITIAL_INBOX, INITIAL_THREAD, MUTED, PRIMARY } from './state'
@@ -136,7 +137,7 @@ export async function drawRemotes($: EngineInterface, kit: Kit, top: Top) {
                 variant="primary"
                 label="Write a message"
                 onPress={() => {
-                  void $.prompt.fill({ text: `/devnull remote ${handleOf(chat.isOrg, chat.target)} ` }).catch(() => {})
+                  void startCommand($, `/devnull remote ${handleOf(chat.isOrg, chat.target)}`)
                   void pingTyping($)
                 }}
               />

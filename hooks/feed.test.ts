@@ -35,7 +35,7 @@ type Reply = { status?: number; body: unknown }
 type Fetch = { method: string; path: string; query: string }
 
 // A made-up dev-null.sh whose answers a test sets per path, and can hold back until it lets them go.
-function server(on: On, answer: (f: Fetch) => Reply | Promise<Reply>, opts: { run?: boolean } = {}) {
+function server(on: On, answer: (f: Fetch) => Reply | Promise<Reply>, opts: { run?: boolean; box?: string; fills?: string[] } = {}) {
   const calls: Fetch[] = []
   mock.store(on, { username: 'me', userId: 'u1' })
   mock.env(on, { HOME: '/tmp/devnull-test' })
@@ -45,7 +45,11 @@ function server(on: On, answer: (f: Fetch) => Reply | Promise<Reply>, opts: { ru
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('ui.toast', async () => ({ value: undefined }))
   on('ui.scroll', async () => ({ value: undefined }) as never)
-  on('prompt.fill', async () => ({ isFilled: true, box: { text: '', cursor: 0 } }) as never)
+  on('prompt.read', async () => ({ value: { text: opts.box ?? '', cursor: (opts.box ?? '').length } }) as never)
+  on('prompt.fill', async (_$, e) => {
+    opts.fills?.push(e.text)
+    return { isFilled: true, text: e.text, cursor: e.text.length } as never
+  })
   on('classic.SessionStart', async () => ({}))
   on('http.fetch', async (_$, e) => {
     const u = new URL(e.url)
@@ -186,4 +190,13 @@ test('after /clear, /resume or a fork the pane still knows you are signed in and
     expect(await ui.find({ key: `star-0-${ID(1)}` })).toBeDefined()
     await ui.unmount()
   }
+})
+
+test('Reply starts the post in the prompt box without throwing away what you had typed', async ($, on) => {
+  const fills: string[] = []
+  server(on, f => (f.path === '/api/v1/log/following' ? { body: { data: [commit(1)], meta: {} } } : { body: { data: { id: 'u1' } } }), { box: 'half a thought', fills })
+  const ui = await openPane($)
+  await ui.press({ key: `reply-0-${ID(1)}` })
+  expect(fills.at(-1)).toBe('/devnull post half a thought')
+  await ui.unmount()
 })

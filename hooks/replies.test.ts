@@ -60,6 +60,7 @@ function standIns(on: On) {
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('ui.toast', async () => ({ value: undefined }))
   on('audio.play', async () => ({ value: undefined }))
+  on('prompt.read', async () => ({ value: { text: '', cursor: 0 } }) as never)
   on('prompt.fill', async () => ({ isFilled: true, box: { text: '', cursor: 0 } }) as never)
   on('classic.SessionStart', async () => ({}))
 }

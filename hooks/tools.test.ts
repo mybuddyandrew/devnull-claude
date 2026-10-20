@@ -62,6 +62,7 @@ const BAND = {
 test('the draft tool shows the draft above the prompt and never posts or fills the prompt box', async ($, on) => {
   const seen = stub(on, 'me', () => FOLLOWING)
   let filled = false
+  on('prompt.read', async () => ({ value: { text: '', cursor: 0 } }) as never)
   on('prompt.fill', async () => {
     filled = true
     return { isFilled: true, box: { text: '', cursor: 0 } } as never

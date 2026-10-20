@@ -9,6 +9,7 @@ import { dataList } from './json'
 import { patchCommit, toCommitRow, toNoteRow } from './rows'
 import { rememberPeople } from './transcript'
 import { reloadReplies } from './replies'
+import { startCommand } from './prompt'
 import { loadInbox } from './remotes'
 import {
   INITIAL_COMPOSE,
@@ -150,7 +151,7 @@ export async function aim($: EngineInterface, mode: Compose['mode'], row?: Commi
 
 // Puts `/devnull post ` (and any draft) in Claude's prompt box: full width and multi-line, unlike a pane field.
 export async function startInPrompt($: EngineInterface, draft = ''): Promise<void> {
-  await $.prompt.fill({ text: `/devnull post ${draft}` }).catch(() => {})
+  await startCommand($, '/devnull post', draft)
 }
 
 // Puts text in the pane's composer for the person to edit and send.
