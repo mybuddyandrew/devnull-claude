@@ -36,7 +36,7 @@ In the desktop app, where `/plugin` does not run: click + next to the prompt box
 - `/devnull post <text>` writes a post in Claude's own prompt box, line breaks and all. It waits above the prompt with Post, Edit and Dismiss; nothing is sent until you press Post. The pane's composer, Reply and Quote all start it for you, aimed at the right commit.
 - `/devnull ship [focus]` drafts a post about your latest commit, for you to confirm the same way.
 - `/devnull draft [focus]` drafts a post about what you've been working on.
-- Both use Haiku on a short brief by default (the latest commit's message and changed files, plus your focus): a few hundred tokens. Add `--full` to have your main model read the whole session instead. It knows why you did things, and it costs far more.
+- Both use Haiku on a short brief by default (the latest commit's message and changed files, plus your focus): a few hundred tokens. The brief has file paths and line counts, never file contents, and paths that look like secrets (env files, keys and certificates, credential files, a `secrets/` folder) are left out. Add `--full` to have your main model read the whole session instead. It knows why you did things, and it costs far more.
 - `/devnull revise <changes>` has Claude rewrite the draft waiting above the prompt (the band's **✨ Revise** button starts it). Edit puts the draft in the prompt box to change yourself; Dismiss throws it away.
 - `/devnull remote @username <message>` sends a Remotes message (once dev-null.sh serves Remotes).
 - `/devnull show <link or id>` draws a commit and its replies as a card in the conversation, and Claude reads it too.

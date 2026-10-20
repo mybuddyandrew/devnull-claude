@@ -5,7 +5,7 @@ import { FOLLOWING } from './fixture'
 import { laneColor, patchCommit, RAIL, toCommitRow, toNoteRow } from './rows'
 import { authorizeUrl, parseCallback, query, signingMessage, target, unarmor } from './sign'
 import { avatarSvg, pictureSvg, progressSvg, skeletonSvg, spinnerSvg } from './svg'
-import { isHandle, preview, safeImageUrl, untrusted } from './text'
+import { isHandle, preview, safeImageUrl, scrubStat, untrusted } from './text'
 
 const PANE = {
   component: 'Pane',
@@ -135,4 +135,27 @@ test('untrusted text is wrapped and cannot close its own wrapper; handles and ca
   expect(isHandle('../me')).toBe(false)
   expect(isHandle('')).toBe(false)
   expect(parseCallback('devnull://auth/callback?code=%E0%A4%A&state=s')).toEqual({ code: undefined, state: 's', error: undefined })
+})
+
+test('a draft brief keeps how much changed but not which secrets file it was', async () => {
+  const stat = [
+    'Rotate keys and tidy config',
+    '',
+    ' app/models/user.rb          |  4 ++--',
+    ' .env.production             |  2 +-',
+    ' config/secrets/acme-corp.yml |  9 +++++++--',
+    ' certs/server.pem            |  1 +',
+    ' {.env.example => .env}      |  0',
+    ' docs/environment.md         |  3 +++',
+    ' 6 files changed, 12 insertions(+), 7 deletions(-)',
+  ].join('\n')
+  const out = scrubStat(stat)
+  expect(out).toContain('app/models/user.rb')
+  expect(out).toContain('docs/environment.md')
+  for (const hidden of ['.env.production', 'acme-corp', 'server.pem', '.env.example']) expect(out).not.toContain(hidden)
+  expect(out.match(/\(a sensitive file\)/g)?.length).toBe(4)
+  // The counts stay, and the subject and summary lines pass through as they were.
+  expect(out).toContain('(a sensitive file)             |  2 +-')
+  expect(out).toContain('Rotate keys and tidy config')
+  expect(out).toContain('6 files changed')
 })

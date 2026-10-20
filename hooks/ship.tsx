@@ -11,7 +11,7 @@ import { rememberPresses } from './presses'
 import { startCommand } from './prompt'
 import { sendMessage } from './remotes'
 import { BIN, DANGER, INITIAL_COMPOSE, INITIAL_SHIP, MUTED, POST_MAX, POST_MIN } from './state'
-import { mentionsIn } from './text'
+import { mentionsIn, scrubStat } from './text'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
 const ship = atom({ plugin: 'devnull', key: 'ship' } as const, INITIAL_SHIP)
@@ -40,7 +40,7 @@ function clean(text: string): string {
 async function lastCommit($: EngineInterface): Promise<string | undefined> {
   try {
     const r = await $.process.run([BIN.git, 'show', '--stat', '--format=%s%n%n%b', 'HEAD'], { cwd: await $.session.cwd(), timeoutMs: 5000 })
-    const out = r.stdout.trim()
+    const out = scrubStat(r.stdout.trim())
     return r.exitCode === 0 && out ? out.slice(0, 3000) : undefined
   } catch {
     return undefined
