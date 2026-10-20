@@ -5,9 +5,9 @@ import type { EngineInterface, On } from 'claude-code'
 import type { CommitRow } from '../types'
 import { searchEmoji } from './emoji'
 import { api, nextCursorOf } from './api'
+import { fetchThread as fetchCommitThread, type CommitThread } from './commits'
 import { loadAvatars } from './images'
 import { dataList } from './json'
-import { toCommitRow } from './rows'
 import { avatarSvg } from './svg'
 import { ago, untrusted } from './text'
 import { AVATAR_MAX_CHARS, HAIRLINE, INITIAL_AVATARS, INITIAL_FEED, INITIAL_PEOPLE, MUTED, STAR } from './state'
@@ -17,8 +17,6 @@ const avatars = atom({ plugin: 'devnull', key: 'avatars' } as const, INITIAL_AVA
 const feed = atom({ plugin: 'devnull', key: 'feed' } as const, INITIAL_FEED)
 const people = atom({ plugin: 'devnull', key: 'people' } as const, INITIAL_PEOPLE)
 
-type Thread = { commit: CommitRow; ancestors: CommitRow[]; replies: CommitRow[] }
-
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 const LINK = /https?:\/\/(?:www\.)?dev-null\.sh\/[^\s)<>\]]*/gi
 const MAX_LINKS = 3
@@ -27,7 +25,7 @@ const FOLLOWING_PAGES = 5
 const LINK_TIMEOUT_MS = 4000
 
 // Filled by showCommit; the card re-fetches when a hot reload emptied it.
-const cache = new Map<string, Thread>()
+const cache = new Map<string, CommitThread>()
 
 const allRows = (rows: CommitRow[]): CommitRow[] => rows.flatMap(r => [r, ...allRows(r.replyPreview), ...(r.quoted ? allRows([r.quoted]) : [])])
 
@@ -41,19 +39,8 @@ async function resolveId($: EngineInterface, arg: string): Promise<string | unde
   return rows.find(r => r.hash.toLowerCase().startsWith(hash) || r.id.toLowerCase().startsWith(hash))?.id
 }
 
-async function fetchThread($: EngineInterface, id: string): Promise<Thread> {
-  const [one, replies] = await Promise.all([
-    api($, 'GET', `commits/${encodeURIComponent(id)}`),
-    api($, 'GET', `commits/${encodeURIComponent(id)}/replies`).catch(() => ({})),
-  ])
-  const body = one as { data?: Record<string, unknown>; ancestors?: unknown }
-  if (!body.data) throw new Error('commit not found')
-  const ancestors = Array.isArray(body.ancestors) ? body.ancestors.filter(a => a !== null && typeof a === 'object') : []
-  const thread: Thread = {
-    commit: toCommitRow(body.data),
-    ancestors: ancestors.map(a => toCommitRow(a as Record<string, unknown>)),
-    replies: dataList(replies).map(toCommitRow),
-  }
+async function fetchThread($: EngineInterface, id: string): Promise<CommitThread> {
+  const thread = await fetchCommitThread($, id)
   cache.set(id, thread)
   return thread
 }
@@ -63,7 +50,7 @@ const oneLine = (c: CommitRow, now: number): string =>
 
 const counts = (c: CommitRow): string => `★ ${c.stars} · ↩ ${c.replies}`
 
-function threadMarkdown(t: Thread, now: number): string {
+function threadMarkdown(t: CommitThread, now: number): string {
   const c = t.commit
   const quote = (r: CommitRow) => `${oneLine(r, now)}\n${r.body.split('\n').map(l => `> ${l}`).join('\n')}`
   return [
@@ -90,7 +77,7 @@ export async function showCommit($: EngineInterface, arg: string): Promise<{ tex
 }
 
 // Compact plain text of a thread for the model.
-function threadContext(t: Thread, now: number): string {
+function threadContext(t: CommitThread, now: number): string {
   const line = (r: CommitRow) => `@${r.username}${r.createdAt ? ` (${ago(r.createdAt, now)} ago)` : ''}: ${r.body}`
   return untrusted(
     [

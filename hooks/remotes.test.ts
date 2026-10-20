@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { toConversationRow, toMessageRow } from './rows'
-import { remotesOf } from './remotes'
+import { remotesOf } from './me'
 
 const PANE = {
   component: 'Pane',

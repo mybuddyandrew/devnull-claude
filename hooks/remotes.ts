@@ -4,19 +4,19 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 
-import type { ConversationRow, Inbox, InboxSection, Live, MessageRow, Thread } from '../types'
+import type { ConversationRow, Inbox, InboxSection, MessageRow, Thread } from '../types'
 import { count, list, obj } from './json'
 import { api, threadPath } from './api'
 import { loadAvatars } from './images'
 import { toConversationRow, toMessageRow } from './rows'
 import { emojify } from './emoji'
+import { myUserId, setLive } from './me'
 import { hex, randomBytes } from './sign'
-import { INITIAL_INBOX, INITIAL_LIVE, INITIAL_THREAD, MESSAGE_MAX, THREAD_POLL_MS } from './state'
+import { INITIAL_INBOX, INITIAL_THREAD, MESSAGE_MAX, THREAD_POLL_MS } from './state'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
 const inbox = atom({ plugin: 'devnull', key: 'inbox' } as const, INITIAL_INBOX)
 const thread = atom({ plugin: 'devnull', key: 'thread' } as const, INITIAL_THREAD)
-const live = atom({ plugin: 'devnull', key: 'live' } as const, INITIAL_LIVE)
 
 
 // The open thread's poll; a hot reload drops it, and the next draw of an open thread starts it again.
@@ -24,29 +24,6 @@ let poller: Timer | undefined
 
 const isNotFound = (error: unknown) => /^404\b/.test(String((error as Error)?.message ?? ''))
 const reason = (error: unknown) => String((error as Error)?.message ?? error).replace(/^\d{3}\s*/, '')
-
-// Your account's id, which says which messages are yours; kept once read.
-export async function myUserId($: EngineInterface): Promise<string | undefined> {
-  const kept = (await $.store.get('userId')) as string | undefined
-  if (kept) return kept
-  try {
-    const me = obj(await api($, 'GET', 'me'))
-    const id = obj(me.data).id
-    if (id === undefined || id === null) return undefined
-    await $.store.set('userId', String(id))
-    return String(id)
-  } catch {
-    return undefined
-  }
-}
-
-// What GET me says about Remotes: absent on a server without the API, null while you have them off.
-export const remotesOf = (me: unknown): { on: boolean; unread: number } => {
-  const root = obj(me)
-  const r = 'remotes' in root ? root.remotes : obj(root.data).remotes
-  if (r === undefined || r === null) return { on: false, unread: 0 }
-  return { on: true, unread: count(obj(r).unread_count) }
-}
 
 // quiet: a background recheck (the minute tick), which shows no loader and writes only when something changed,
 // since every write redraws the pane and a redraw under a click drops the click.
@@ -70,11 +47,10 @@ export async function loadInbox($: EngineInterface, section?: InboxSection, more
       requests: count(json.requests_count),
     }
     if (JSON.stringify(next) !== JSON.stringify(current)) await update($, inbox, (): Inbox => next)
-    const l = await read($, live)
-    if (l.remotesOn !== true || l.remotesUnread !== count(json.unread_count)) await update($, live, (x): Live => ({ ...x, remotesOn: true, remotesUnread: count(json.unread_count) }))
+    await setLive($, { remotesOn: true, remotesUnread: count(json.unread_count) })
     void loadAvatars($, found.map((r): [string, string | undefined] => [r.avatarUser ?? r.title, r.avatarUrl]))
   } catch (error) {
-    if (isNotFound(error)) await update($, live, (l): Live => ({ ...l, remotesOn: false }))
+    if (isNotFound(error)) await setLive($, { remotesOn: false })
     await update($, inbox, (i): Inbox => ({ ...i, isLoading: false, error: isNotFound(error) ? "Remotes isn't available on dev-null.sh for you yet." : reason(error) }))
   }
 }
@@ -299,20 +275,6 @@ export async function sendFromPrompt($: EngineInterface, args: string): Promise<
   if (!m) return 'Write it as /devnull remote @username your message.'
   const isOrg = m[2] !== undefined
   return sendMessage($, isOrg, (isOrg ? m[2] : m[1])!, m[3]!)
-}
-
-// Checks GET me for Remotes now, so the tab is there as soon as the pane opens (the background tick
-// rechecks every minute).
-export async function checkRemotes($: EngineInterface): Promise<void> {
-  if (!(await $.store.get('username'))) return
-  try {
-    const me = await api($, 'GET', 'me')
-    const id = obj(obj(me).data).id
-    if (id !== undefined && id !== null) await $.store.set('userId', String(id))
-    const r = remotesOf(me)
-    const l = await read($, live)
-    if (l.remotesOn !== r.on || l.remotesUnread !== r.unread) await update($, live, (x): Live => ({ ...x, remotesOn: r.on, remotesUnread: r.unread }))
-  } catch {}
 }
 
 // A fresh client id for a message, so a retry is never sent twice.

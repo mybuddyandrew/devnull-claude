@@ -2,14 +2,16 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderInput } from 'claude-code'
 
-import type { CommitRow, ConversationRow, InboxSection, Live, MessageRow } from '../types'
+import type { CommitRow, ConversationRow, InboxSection, MessageRow } from '../types'
 import { NOTE_KINDS } from './rows'
 import { avatarSvg, pictureSvg, progressSvg, skeletonSvg, spinnerSvg, TAIL_HEIGHT, tailSvg, underlineSvg } from './svg'
 import { ago, handleFromHref, linkMentions, MENTION_HREF, mentionsIn, preview } from './text'
-import { aim, offerFromPrompt, react, refresh, show, startInPrompt } from './feed'
+import { aim, react, refresh, show, startInPrompt } from './feed'
+import { offerFromPrompt } from './ship'
 import { startLogin, syncLogin } from './login'
 import { closeProfile, openProfile, toggleFollow } from './profile'
-import { answerRequest, checkRemotes, closeThread, loadInbox, openThread, pingTyping, retryMessage, setStashed, toggleReaction } from './remotes'
+import { checkRemotes, setLive } from './me'
+import { answerRequest, closeThread, loadInbox, openThread, pingTyping, retryMessage, setStashed, toggleReaction } from './remotes'
 import { toggleReplies } from './replies'
 import { heatmapSvg } from './streaks'
 import {
@@ -212,7 +214,6 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
           )}
           <Button key="compose-open" plain dimColor label="✎ Write in prompt box" onPress={() => void composeInPrompt($)} />
         </Box>
-        {draft.error && <Text color={DANGER}>Not sent: {draft.error}</Text>}
       </Box>
     )
 
@@ -688,7 +689,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               label={`↑ ${fresh.newCount} new ${fresh.newCount === 1 ? 'commit' : 'commits'}`}
               onPress={() => {
                 void (async () => {
-                  await update($, live, (l): Live => ({ ...l, newCount: 0 }))
+                  await setLive($, { newCount: 0 })
                   await refreshToTop($)
                 })()
               }}

@@ -1,5 +1,5 @@
 // The mod's shared state and look: one place for the atoms every feature reads.
-import type { CommitRow, Compose, Feed, Inbox, Live, Login, Profile, Ship, Stats, NoteRow, Tab, Thread } from '../types'
+import type { CommitRow, Compose, Feed, Inbox, Live, Login, Profile, Ship, Stats, Tab, Thread } from '../types'
 
 export const PANE = 'devnull'
 export const TABS: Tab[] = ['following', 'latest', 'trending', 'notifications', 'remotes']
@@ -20,7 +20,7 @@ export const INITIAL_TAB = 'following' as Tab
 export const INITIAL_FEED = { isLoading: false, commits: [], notifications: [] } as Feed
 export const INITIAL_LOGIN = { status: 'signed-out' } as Login
 export const INITIAL_AVATARS = {} as Record<string, string>
-export const INITIAL_COMPOSE = { mode: 'new', isSending: false, round: 0 } as Compose
+export const INITIAL_COMPOSE = { mode: 'new', round: 0 } as Compose
 export const INITIAL_EXPANDED = [] as string[]
 export const INITIAL_SHIP = { status: 'idle', round: 0 } as Ship
 export const INITIAL_STATS = null as Stats | null
@@ -47,7 +47,6 @@ export const INITIAL_THREAD = null as Thread | null
 export const THREAD_POLL_MS = 3000
 // dev-null.sh takes messages up to 2000 characters, 30 a minute.
 export const MESSAGE_MAX = 2000
-export const INITIAL_TAB_CACHE = {} as Record<string, { commits: CommitRow[]; notifications: NoteRow[]; nextCursor?: string }>
 export const INITIAL_OPEN_REPLIES = {} as Record<string, { status: 'loading' | 'ready' | 'failed'; replies: CommitRow[]; error?: string }>
 // An open thread draws at most this many replies inline; the rest are a link away.
 export const MAX_INLINE_REPLIES = 20

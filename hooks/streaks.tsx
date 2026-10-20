@@ -5,7 +5,8 @@ import type { EngineInterface, On } from 'claude-code'
 import type { Live, Stats } from '../types'
 import { num, obj } from './json'
 import { api } from './api'
-import { loadInbox, remotesOf } from './remotes'
+import { readMe, setLive } from './me'
+import { loadInbox } from './remotes'
 import { INITIAL_FEED, INITIAL_LIVE, INITIAL_STATS, INITIAL_TAB } from './state'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
@@ -108,11 +109,8 @@ export async function loadStats($: EngineInterface): Promise<void> {
 async function tick($: EngineInterface): Promise<void> {
   if (!(await $.store.get('username'))) return
   try {
-    const me = (await api($, 'GET', 'me')) as { unread_notifications_count?: unknown; data?: { id?: unknown } }
-    const unread = num(me.unread_notifications_count) ?? 0
-    if (me.data?.id !== undefined && me.data.id !== null) await $.store.set('userId', String(me.data.id))
     // Remotes appear once dev-null.sh's API has them and you have them switched on.
-    const remotes = remotesOf(me)
+    const { unread, remotes } = await readMe($)
     const showing = await read($, tab)
     const newest = (await read($, feed)).commits[0]?.id
     let newCount = 0
@@ -120,10 +118,7 @@ async function tick($: EngineInterface): Promise<void> {
       const json = (await api($, 'GET', `log/${showing}`, { since: newest })) as { new_commits_count?: unknown }
       newCount = num(json.new_commits_count) ?? 0
     }
-    // Written only when a count changed: every write redraws the pane, and a redraw under a click drops it.
-    const next: Live = { newCount, unread, remotesOn: remotes.on, remotesUnread: remotes.unread }
-    const before = await read($, live)
-    if (JSON.stringify({ ...before, ...next }) !== JSON.stringify(before)) await update($, live, (l): Live => ({ ...l, ...next }))
+    await setLive($, { newCount, unread, remotesOn: remotes.on, remotesUnread: remotes.unread })
     // The open inbox keeps itself current, as the phone app's does, quietly.
     if (remotes.on && showing === 'remotes') await loadInbox($, undefined, false, true)
   } catch {}

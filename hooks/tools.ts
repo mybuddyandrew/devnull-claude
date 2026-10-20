@@ -1,11 +1,12 @@
 // Tools the model can call to read /dev/null and draft (never post) commits.
 import type { EngineInterface, On } from 'claude-code'
 
-import { api, commitPath, nextCursorOf, threadPath } from './api'
+import { api, nextCursorOf, threadPath } from './api'
+import { fetchThread } from './commits'
 import { dataList } from './json'
 import { NOTE_KINDS, toCommitRow, toConversationRow, toMessageRow, toNoteRow } from './rows'
 import { ago, isHandle, untrusted } from './text'
-import { myUserId } from './remotes'
+import { myUserId } from './me'
 import type { CommitRow } from '../types'
 import { offerPost } from './ship'
 
@@ -144,13 +145,8 @@ async function feed($: EngineInterface, e: Record<string, unknown>): Promise<str
 async function thread($: EngineInterface, e: Record<string, unknown>): Promise<string> {
   const id = commitIdOf(e.commit)
   if (!id) return 'dev-null.sh error: give a full commit id (uuid) or a dev-null.sh commit link.'
-  const json = (await api($, 'GET', `commits/${encodeURIComponent(id)}`)) as { data?: Record<string, unknown>; ancestors?: unknown }
-  const replies = await api($, 'GET', commitPath(id, 'replies'))
+  const { commit: row, ancestors, replies: answers, hasMoreReplies: more } = await fetchThread($, id)
   const now = await $.clock.now()
-  const ancestors = dataList({ data: json.ancestors }).map(toCommitRow)
-  const row = toCommitRow(json.data ?? {})
-  const answers = dataList(replies).map(toCommitRow)
-  const more = nextCursorOf(replies)
   const lines: string[] = []
   if (ancestors.length) lines.push('Ancestors (oldest first):', ...ancestors.map(r => commitLine(r, now)), '')
   lines.push('Commit:', `[${row.hash} id=${row.id}] @${row.username}${row.name ? ` (${row.name})` : ''} · ${ago(row.createdAt, now)} · ★${row.stars} ↩${row.replies}`, row.body)
