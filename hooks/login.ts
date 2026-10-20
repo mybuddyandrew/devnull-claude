@@ -5,7 +5,10 @@ import type { EngineInterface, Timer } from 'claude-code'
 import type { Login } from '../types'
 import { api, ensureHandler, ensureKey, paths, run } from './api'
 import { authorizeUrl, base64Url, challenge, fingerprintOf, parseCallback, randomBytes } from './sign'
-import { show } from './feed'
+import { forgetFeed, show } from './feed'
+import { checkRemotes, forgetMe } from './me'
+import { forgetRemotes } from './remotes'
+import { forgetStats } from './streaks'
 import {
   BIN,
   INITIAL_LOGIN,
@@ -44,6 +47,8 @@ export async function finish($: EngineInterface, url: string): Promise<string> {
     await $.store.set('username', username)
     await update($, login, (): Login => ({ status: 'signed-in', username }))
     $.ui.toast(`/dev/null: signed in as @${username}`)
+    // This account's id (which Remotes messages are yours) and counts, read afresh.
+    await checkRemotes($)
     await show($, 'following')
     return `Signed in to dev-null.sh as @${username}.`
   } catch (error) {
@@ -62,7 +67,7 @@ export function poll($: EngineInterface, pending: Pending) {
         // A callback for some other sign-in (an old tab, or a link a page opened) is dropped, and this one waits on.
         if (parseCallback(url).state !== pending.state) return
         await finish($, url)
-      } else if (Date.now() - pending.startedAt > LOGIN_WINDOW_MS) {
+      } else if ((await $.clock.now()) - pending.startedAt > LOGIN_WINDOW_MS) {
         stopPolling()
         await $.store.delete('pending')
         await update($, login, (): Login => ({ status: 'failed', message: 'Sign-in timed out. Run /devnull login again.' }))
@@ -78,7 +83,7 @@ export async function startLogin($: EngineInterface): Promise<string> {
   await run($, [BIN.rm, '-f', p.callback])
 
   const verifier = base64Url(randomBytes(32))
-  const pending: Pending = { verifier, state: base64Url(randomBytes(16)), startedAt: Date.now() }
+  const pending: Pending = { verifier, state: base64Url(randomBytes(16)), startedAt: await $.clock.now() }
   await $.store.set('pending', pending)
   const fingerprint = fingerprintOf(await run($, [BIN.sshKeygen, '-lf', `${p.key}.pub`]))
   const url = authorizeUrl({ fingerprint, deviceName: 'Claude Code', challenge: await challenge(verifier), state: pending.state })
@@ -98,7 +103,10 @@ export async function logout($: EngineInterface): Promise<string> {
   await $.store.delete('username')
   await $.store.delete('pending')
   await update($, login, (): Login => ({ status: 'signed-out' }))
-  await show($, 'following')
+  await forgetFeed($)
+  await forgetRemotes($)
+  await forgetMe($)
+  await forgetStats($)
   return 'Signed out here. The device key stays in ~/.devnull-claude; remove the device on dev-null.sh to revoke it.'
 }
 

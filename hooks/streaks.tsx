@@ -1,6 +1,6 @@
 // Streaks and stats: the profile header, the status line, live counts and the end-of-day nudge.
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, On } from 'claude-code'
+import type { EngineInterface, On, Timer } from 'claude-code'
 
 import type { Live, Stats } from '../types'
 import { num, obj } from './json'
@@ -95,6 +95,12 @@ export const statusLine = (s: Stats, l: Live): string => {
   return `/dev/null: ${parts.join(' · ')}`
 }
 
+// Signed out: the header and status line clear.
+export async function forgetStats($: EngineInterface): Promise<void> {
+  await update($, stats, (): Stats | null => null)
+  $.ui.status(undefined)
+}
+
 export async function loadStats($: EngineInterface): Promise<void> {
   const username = (await $.store.get('username')) as string | undefined
   if (!username) return
@@ -130,9 +136,13 @@ async function tick($: EngineInterface): Promise<void> {
 }
 
 // Runs in session.start: fetch once now, then poll in the background for the life of the module.
+// One poll for the module's life: a second start replaces it rather than doubling it.
+let ticker: Timer | undefined
+
 export async function startStreaks($: EngineInterface): Promise<void> {
+  ticker?.cancel()
   void tick($)
-  $.clock.every(TICK_MS, () => void tick($))
+  ticker = $.clock.every(TICK_MS, () => void tick($))
 }
 
 export function registerStreaks(on: On): void {

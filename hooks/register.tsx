@@ -2,9 +2,12 @@ import type { Register } from 'claude-code'
 
 import { finish, logout, poll, startLogin, syncLogin, type Pending } from './login'
 import { openPane, registerPane } from './pane'
+import { registerPresses } from './presses'
 import { resumeThread, sendFromPrompt } from './remotes'
 import { draftFromSession, offerFromPrompt, registerShip, reviseDraft } from './ship'
-import { registerStreaks, startStreaks } from './streaks'
+import { refresh } from './feed'
+import { checkRemotes } from './me'
+import { loadStats, registerStreaks, startStreaks } from './streaks'
 import { registerTools, startTools } from './tools'
 import { loadFollowing, registerTranscript, showCommit } from './transcript'
 import { LOGIN_WINDOW_MS, PANE } from './state'
@@ -19,14 +22,30 @@ export const register: Register = (on, options) => {
     await syncLogin($)
     // The people you follow seed @ completion; in the background, so startup never waits on dev-null.sh.
     void loadFollowing($).catch(() => {})
-    const pending = (await $.store.get('pending')) as Pending | undefined
-    if (pending && Date.now() - pending.startedAt < LOGIN_WINDOW_MS) poll($, pending)
     // Each feature's own session setup; one session.start hook, as the engine allows one unmatched hook per event.
     await startTools($)
-    await startStreaks($)
-    await resumeThread($)
+    // Background polling is for a person at the prompt: a -p run or the SDK gets the tools and nothing ticking.
+    if (e.isInteractive) {
+      const pending = (await $.store.get('pending')) as Pending | undefined
+      if (pending && (await $.clock.now()) - pending.startedAt < LOGIN_WINDOW_MS) poll($, pending)
+      await startStreaks($)
+      await resumeThread($)
+    }
     return next(e)
   })
+
+  // /clear, /resume and a fork reset the session's state to its defaults without a session.start: the sign-in,
+  // the log, the counts and the header are read back from the store and dev-null.sh.
+  on('classic.SessionStart', async ($, e, next) => {
+    if (e.source === 'clear' || e.source === 'resume' || e.source === 'fork') {
+      await syncLogin($)
+      void loadFollowing($).catch(() => {})
+      void checkRemotes($)
+      void loadStats($)
+      await refresh($)
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'devnull' }, async ($, e) => {
     const [sub = '', ...rest] = e.args.trim().split(/\s+/)
@@ -50,6 +69,7 @@ export const register: Register = (on, options) => {
   })
 
   registerPane(on)
+  registerPresses(on)
   registerShip(on, options)
   registerTools(on)
   registerTranscript(on)

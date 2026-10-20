@@ -10,6 +10,8 @@ type Fetched = { url: string; method?: string }
 function stub(on: Parameters<typeof mock.store>[0], username: string | undefined, answers: (url: string) => unknown, seen: Fetched[] = []) {
   mock.store(on, username ? { username } : {})
   mock.env(on, { HOME: '/tmp/devnull-test' })
+  // Beneath this mod the band draws nothing of its own.
+  on('ui.render', { component: 'AbovePrompt' }, async () => ({ type: 'Box', props: {}, children: [] }) as never)
   mock.clock(on, { now: Date.parse('2026-10-19T19:00:00Z') })
   on('process.run', async () => ({ value: { exitCode: 0, stdout: SIG, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
   on('fs.exists', async () => ({ value: true }))
@@ -60,6 +62,7 @@ const BAND = {
 test('the draft tool shows the draft above the prompt and never posts or fills the prompt box', async ($, on) => {
   const seen = stub(on, 'me', () => FOLLOWING)
   let filled = false
+  on('prompt.read', async () => ({ value: { text: '', cursor: 0 } }) as never)
   on('prompt.fill', async () => {
     filled = true
     return { isFilled: true, box: { text: '', cursor: 0 } } as never

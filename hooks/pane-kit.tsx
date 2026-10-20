@@ -15,7 +15,7 @@ export async function makeKit($: EngineInterface, e: RenderInput) {
   const Svg = 'Svg' in els ? els.Svg : undefined
   const Input = 'Input' in els ? els.Input : undefined
   const faces = await read($, avatars)
-  const now = Date.now()
+  const now = await $.clock.now()
 
   // Loaders: skeleton rows the first time a list loads, a sweeping bar while one refreshes over what's
   // shown, and a spinner beside a button. Text stands in where a surface draws no SVG.

@@ -47,6 +47,12 @@ export async function setLive($: EngineInterface, patch: Partial<Live>): Promise
   if (JSON.stringify({ ...before, ...patch }) !== JSON.stringify(before)) await update($, live, (l): Live => ({ ...l, ...patch }))
 }
 
+// Signed out: the account's id and counts go with it, so the next account reads its own.
+export async function forgetMe($: EngineInterface): Promise<void> {
+  await $.store.delete('userId')
+  await update($, live, (): Live => INITIAL_LIVE)
+}
+
 // Checks GET me for Remotes now, so the tab is there as soon as the pane opens (the background tick
 // rechecks every minute).
 export async function checkRemotes($: EngineInterface): Promise<void> {

@@ -75,6 +75,9 @@ test('a pasted link adds the thread as context, plain text passes through', asyn
 test('@ completion filters people', async ($, on) => {
   on('state.get', async (_$, e) => ({ value: { value: (e as { key: string }).key === 'people' ? ['Ada', 'adam', 'linus'] : undefined, version: 1 } }))
   on('prompt.autocomplete', async () => ({ suggestions: [] }))
-  const out = await ($ as unknown as { prompt: { autocomplete: (i: unknown) => Promise<{ suggestions: { text: string }[] }> } }).prompt.autocomplete({ text: '@a', cursor: 2, token: '@a', start: 0 })
+  const complete = ($ as unknown as { prompt: { autocomplete: (i: unknown) => Promise<{ suggestions: { text: string }[] }> } }).prompt.autocomplete
+  const out = await complete({ text: '/devnull post hi @a', cursor: 19, token: '@a', start: 17 })
   expect(out.suggestions.map(s => s.text)).toEqual(['@Ada', '@adam'])
+  // Outside a /devnull command, @ is left to Claude's own completion.
+  expect((await complete({ text: 'look at @a', cursor: 10, token: '@a', start: 8 })).suggestions).toEqual([])
 })

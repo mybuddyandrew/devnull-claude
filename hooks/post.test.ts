@@ -15,6 +15,8 @@ const BAND = {
 test('/devnull post waits in the band and only the Post press sends it, line breaks kept', async ($, on) => {
   mock.store(on, { username: 'me' })
   mock.env(on, { HOME: '/tmp/devnull-test' })
+  // Beneath this mod the band draws nothing of its own.
+  on('ui.render', { component: 'AbovePrompt' }, async () => ({ type: 'Box', props: {}, children: [] }) as never)
   mock.clock(on, { now: Date.parse('2026-10-19T19:00:00Z') })
   on('process.run', async () => ({ value: { exitCode: 0, stdout: '-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
   on('fs.exists', async () => ({ value: true }))
@@ -48,6 +50,8 @@ test('/devnull post waits in the band and only the Post press sends it, line bre
 test('/devnull draft sums up the session into the band, focus passed to the model', async ($, on) => {
   mock.store(on, { username: 'me' })
   mock.env(on, { HOME: '/tmp/devnull-test' })
+  // Beneath this mod the band draws nothing of its own.
+  on('ui.render', { component: 'AbovePrompt' }, async () => ({ type: 'Box', props: {}, children: [] }) as never)
   mock.clock(on, { now: Date.parse('2026-10-19T19:00:00Z') })
   const asked: string[] = []
   on('model.fork', async (_$, e) => {
@@ -71,6 +75,8 @@ test('/devnull draft sums up the session into the band, focus passed to the mode
 test('/devnull revise has Claude rewrite the waiting draft, which still waits for Post', async ($, on) => {
   mock.store(on, { username: 'me' })
   mock.env(on, { HOME: '/tmp/devnull-test' })
+  // Beneath this mod the band draws nothing of its own.
+  on('ui.render', { component: 'AbovePrompt' }, async () => ({ type: 'Box', props: {}, children: [] }) as never)
   const asked: string[] = []
   on('model.fork', async (_$, e) => {
     asked.push(e.prompt)

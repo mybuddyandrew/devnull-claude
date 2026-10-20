@@ -83,7 +83,7 @@ export async function commitDrawer($: EngineInterface, kit: Kit) {
           <Box flexDirection="column" borderStyle="round" borderColor={HAIRLINE} paddingX={1} marginTop={1}>
             <Text wrap="truncate-end">
               <Text color={c.quoted.lane}>● </Text>
-              <Text bold>{c.quoted.name ?? c.quoted.username}</Text> <Text mono color={MUTED}>@{c.quoted.username}</Text>
+              <Text weight="bold">{c.quoted.name ?? c.quoted.username}</Text> <Text mono color={MUTED}>@{c.quoted.username}</Text>
             </Text>
             <Text color={MUTED} wrap="wrap">
               {c.quoted.body.length > 280 ? c.quoted.body.slice(0, 280) + '…' : c.quoted.body}

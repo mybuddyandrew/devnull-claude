@@ -132,7 +132,7 @@ export function registerTranscript(on: On): void {
           <Box flexDirection="row" alignItems="center" columnGap={1}>
             {Svg && <Svg source={avatarSvg(c.lane, 32, photo, c.username)} alt={`@${c.username}`} width={32} height={32} />}
             <Text wrap="truncate-end">
-              <Text bold>{c.name ?? c.username}</Text> <Text mono color={MUTED}>@{c.username}</Text>
+              <Text weight="bold">{c.name ?? c.username}</Text> <Text mono color={MUTED}>@{c.username}</Text>
               {c.createdAt && <Text color={MUTED}> · {ago(c.createdAt, now)}</Text>}
               <Text mono color={MUTED}> · {c.hash}</Text>
             </Text>
@@ -167,8 +167,10 @@ export function registerTranscript(on: On): void {
     return { suggestions: [...prev.suggestions, ...found.map(f => ({ text: f.emoji, label: `${f.emoji}  :${f.code}:`, description: 'emoji' }))] }
   })
 
+  // People on /dev/null, offered while writing a /devnull command; anywhere else @ stays Claude's (files, agents).
   on('prompt.autocomplete', { token: /^@/ }, async ($, e, next) => {
     const prev = await next(e)
+    if (!/^\s*\/devnull\s+(post|remote|revise|draft)\b/.test(e.text)) return prev
     const prefix = e.token.slice(1).toLowerCase()
     const ours = (await read($, people))
       .filter(u => u.toLowerCase().startsWith(prefix))
