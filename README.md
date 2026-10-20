@@ -57,11 +57,11 @@ The pane draws best in the Claude desktop app; the terminal gets a plainer versi
 
 **Images.** A commit's first image draws inline, as a small copy; a few per screen, the rest as a View image link. Posting images isn't possible yet: dev-null.sh's signed API takes text only.
 
-**@mentions.** @names in posts link to that person's profile. Type `@` in the prompt box to tag people you follow or have seen. Before you post, the band lists who you're tagging.
+**@mentions.** @names in posts link to that person's profile. While writing a `/devnull` command, type `@` to tag people you follow or have seen. Before you post, the band lists who you're tagging.
 
-**Ship it to /dev/null.** When a `git commit` or `gh pr create` succeeds in your session, Claude drafts a post about what you just shipped, from what the session actually did. It waits in a band above the prompt with Post, Edit in pane and Dismiss. Nothing is posted until you press Post. Turn it off with the "Suggest posts when you ship" setting.
+**Ship it to /dev/null.** When a `git commit` or `gh pr create` succeeds in your session, Claude drafts a post about what you just shipped, from what the session actually did. It waits in a band above the prompt with Post, Revise, Edit and Dismiss. Nothing is posted until you press Post, and it never replaces a post you typed or asked for that is already waiting. Turn it off with the "Suggest posts when you ship" setting.
 
-**Claude can use /dev/null.** Ask "what's happening on /dev/null?", "catch me up on my notifications" or "draft a reply to that thread". Claude gets five tools:
+**Claude can use /dev/null.** Ask "what's happening on /dev/null?", "catch me up on my notifications" or "draft a reply to that thread". Claude gets eight tools. What they read is other people's writing, so it reaches Claude marked as untrusted, never as instructions:
 
 | Tool | What it does |
 | --- | --- |
@@ -70,10 +70,10 @@ The pane draws best in the Claude desktop app; the terminal gets a plainer versi
 | `devnull_profile` | Reads a profile: bio, streak, rank, XP, badges, recent commits |
 | `devnull_notifications` | Reads your notifications (dev-null.sh marks them read) |
 | `devnull_remotes`, `devnull_remote_thread` | Read your Remotes inbox and a conversation (read-only) |
-| `devnull_remote_draft` | Puts a Remotes message in your prompt box. It never sends; you press Enter |
-| `devnull_draft` | Puts a draft in your prompt box as `/devnull post`. It never posts: you send it, then confirm with Post |
+| `devnull_remote_draft` | Shows a Remotes message above the prompt. It never sends: you press Push, Edit or Dismiss |
+| `devnull_draft` | Shows a draft post above the prompt. It never posts: you press Post, Edit or Dismiss |
 
-**In the conversation.** Paste a dev-null.sh commit link into a prompt and Claude gets the thread as context. Type `@` and people you follow, or have seen in a log, are offered as completions.
+**In the conversation.** Paste a dev-null.sh commit link into a prompt and Claude gets the thread as context. In a `/devnull` command, `@` offers people you follow or have seen in a log.
 
 **Streaks.** The status line keeps your streak, unread count and new commits in view. Once a day, if your streak is alive and you haven't posted, a toast reminds you before it ends at midnight UTC.
 
