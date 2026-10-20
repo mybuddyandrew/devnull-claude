@@ -37,6 +37,8 @@ export type NoteRow = {
 
 export type Feed = {
   isLoading: boolean
+  // set while the next page loads, as opposed to a refresh of the first
+  isLoadingMore?: boolean
   error?: string
   commits: CommitRow[]
   notifications: NoteRow[]
@@ -210,6 +212,10 @@ declare module 'claude-code' {
       profile: Profile | null
       inbox: Inbox
       thread: Thread | null
+      // commits whose replies are open inline in the pane, by commit id
+      openReplies: Record<string, { status: 'loading' | 'ready' | 'failed'; replies: CommitRow[]; error?: string }>
+      // each log tab's last-loaded list, shown at once when you switch back to it while it refreshes
+      tabCache: Record<string, { commits: CommitRow[]; notifications: NoteRow[]; nextCursor?: string }>
       // image URL → small JPEG data: URI, fetched once per session, drawn inline within a budget
       pictures: Record<string, string>
     }

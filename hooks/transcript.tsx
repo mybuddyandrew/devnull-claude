@@ -3,6 +3,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { CommitRow } from '../types'
+import { searchEmoji } from './emoji'
 import { api, loadAvatars, nextCursorOf } from './core'
 import { ago, avatarSvg, dataList, toCommitRow } from './devnull'
 import { AVATAR_MAX_CHARS, HAIRLINE, INITIAL_AVATARS, INITIAL_FEED, INITIAL_PEOPLE, MUTED, STAR } from './state'
@@ -164,6 +165,14 @@ export function registerTranscript(on: On): void {
     const blocks = found.flatMap(t => (t ? [threadContext(t, now)] : []))
     return next(blocks.length > 0 ? { ...e, context: [...(e.context ?? []), ...blocks] } : e)
   }).catch(($, e, next) => next(e))
+
+  // :st → ⭐ and friends, while writing a /devnull post or Remotes message; taking one writes the emoji itself.
+  on('prompt.autocomplete', { token: /^:[a-z0-9_+-]{2,}$/i }, async ($, e, next) => {
+    const prev = await next(e)
+    if (!/^\s*\/devnull\s+(post|remote|revise)\b/.test(e.text)) return prev
+    const found = searchEmoji(e.token.slice(1))
+    return { suggestions: [...prev.suggestions, ...found.map(f => ({ text: f.emoji, label: `${f.emoji}  :${f.code}:`, description: 'emoji' }))] }
+  })
 
   on('prompt.autocomplete', { token: /^@/ }, async ($, e, next) => {
     const prev = await next(e)

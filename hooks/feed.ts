@@ -6,12 +6,16 @@ import type { CommitRow, Compose, Tab } from '../types'
 import { api, commitPath, loadAvatars, loadPictures, nextCursorOf } from './core'
 import { rememberPeople } from './transcript'
 import { offerPost } from './ship'
+import { emojify } from './emoji'
+import { reloadReplies } from './replies'
 import { loadInbox } from './remotes'
 import { dataList, patchCommit, toCommitRow, toNoteRow } from './devnull'
 import {
   INITIAL_COMPOSE,
   INITIAL_FEED,
   INITIAL_TAB,
+  INITIAL_OPEN_REPLIES,
+  INITIAL_TAB_CACHE,
   INITIAL_WINDOW_START,
   MAX_LOADED,
 } from './state'
@@ -21,6 +25,8 @@ const compose = atom({ plugin: 'devnull', key: 'compose' } as const, INITIAL_COM
 const feed = atom({ plugin: 'devnull', key: 'feed' } as const, INITIAL_FEED)
 const tab = atom({ plugin: 'devnull', key: 'tab' } as const, INITIAL_TAB)
 const windowStart = atom({ plugin: 'devnull', key: 'windowStart' } as const, INITIAL_WINDOW_START)
+const openReplies = atom({ plugin: 'devnull', key: 'openReplies' } as const, INITIAL_OPEN_REPLIES)
+const tabCache = atom({ plugin: 'devnull', key: 'tabCache' } as const, INITIAL_TAB_CACHE)
 
 export async function refresh($: EngineInterface, more = false): Promise<void> {
   const showing = await read($, tab)
@@ -30,18 +36,18 @@ export async function refresh($: EngineInterface, more = false): Promise<void> {
   const cursor = more ? (await read($, feed)).nextCursor : undefined
   // A fresh load starts drawing from the top again.
   if (!more) await update($, windowStart, () => 0)
-  await update($, feed, f => ({ ...f, isLoading: true, error: undefined }))
+  await update($, feed, f => ({ ...f, isLoading: true, isLoadingMore: more, error: undefined }))
   try {
     if (showing === 'notifications') {
       // Listing notifications marks them read on dev-null.sh, as the web does.
       const json = await api($, 'GET', 'notifications', { cursor })
       const rows = dataList(json).map(toNoteRow)
-      await update($, feed, f => ({ ...f, isLoading: false, notifications: more ? [...f.notifications, ...rows].slice(0, MAX_LOADED) : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
+      await update($, feed, f => ({ ...f, isLoading: false, isLoadingMore: false, notifications: more ? [...f.notifications, ...rows].slice(0, MAX_LOADED) : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
       void loadAvatars($, rows.map(r => [r.actor, r.avatarUrl]))
     } else {
       const json = await api($, 'GET', `log/${showing}`, { cursor })
       const rows = dataList(json).map(toCommitRow)
-      await update($, feed, f => ({ ...f, isLoading: false, commits: more ? [...f.commits, ...rows].slice(0, MAX_LOADED) : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
+      await update($, feed, f => ({ ...f, isLoading: false, isLoadingMore: false, commits: more ? [...f.commits, ...rows].slice(0, MAX_LOADED) : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
       const people = rows.flatMap(r => [r, ...r.replyPreview, ...(r.quoted ? [r.quoted] : [])])
       void loadAvatars($, people.map(r => [r.username, r.avatarUrl]))
       // The first image of each commit, small, for drawing inline.
@@ -50,13 +56,21 @@ export async function refresh($: EngineInterface, more = false): Promise<void> {
       void rememberPeople($, people.map(r => r.username)).catch(() => {})
     }
   } catch (error) {
-    await update($, feed, f => ({ ...f, isLoading: false, error: String((error as Error).message ?? error) }))
+    await update($, feed, f => ({ ...f, isLoading: false, isLoadingMore: false, error: String((error as Error).message ?? error) }))
   }
 }
 
+// Switches tab: the list you're leaving is kept, and the one you're going to shows at once from what was
+// kept (if anything) while it refreshes, so a switch never flashes an empty pane.
 export async function show($: EngineInterface, next: Tab): Promise<void> {
+  const leaving = await read($, tab)
+  const now = await read($, feed)
+  if (leaving !== 'remotes') {
+    await update($, tabCache, c => ({ ...c, [leaving]: { commits: now.commits.slice(0, 60), notifications: now.notifications.slice(0, 60), ...(now.nextCursor ? { nextCursor: now.nextCursor } : {}) } }))
+  }
+  const kept = (await read($, tabCache))[next]
   await update($, tab, () => next)
-  await update($, feed, f => ({ ...f, commits: [], notifications: [], nextCursor: undefined }))
+  await update($, feed, f => ({ ...f, error: undefined, commits: kept?.commits ?? [], notifications: kept?.notifications ?? [], nextCursor: kept?.nextCursor }))
   await refresh($)
 }
 
@@ -67,6 +81,7 @@ export async function react($: EngineInterface, row: CommitRow, kind: 'star' | '
   const optimistic = (r: CommitRow): CommitRow =>
     kind === 'star' ? { ...r, isStarred: on, stars: Math.max(0, r.stars + (on ? 1 : -1)) } : { ...r, isSaved: on }
   await update($, feed, f => ({ ...f, commits: patchCommit(f.commits, row.id, optimistic) }))
+  await patchOpenReplies($, row.id, optimistic)
   try {
     const json = (await api($, method, commitPath(row.id, kind === 'star' ? 'star' : 'bookmark'))) as { data?: Record<string, unknown> }
     if (json.data) {
@@ -75,9 +90,11 @@ export async function react($: EngineInterface, row: CommitRow, kind: 'star' | '
         ...f,
         commits: patchCommit(f.commits, row.id, r => ({ ...r, stars: fresh.stars, isStarred: fresh.isStarred, isSaved: kind === 'save' ? on : r.isSaved })),
       }))
+      await patchOpenReplies($, row.id, r => ({ ...r, stars: fresh.stars, isStarred: fresh.isStarred, isSaved: kind === 'save' ? on : r.isSaved }))
     }
   } catch (error) {
     await update($, feed, f => ({ ...f, commits: patchCommit(f.commits, row.id, () => row) }))
+    await patchOpenReplies($, row.id, () => row)
     $.ui.toast(`/dev/null: ${(error as Error).message}`)
   }
 }
@@ -136,11 +153,23 @@ export async function draftInComposer($: EngineInterface, text: string, to: { mo
 // whatever the composer is aimed at (a reply or a quote when one is set). Nothing is posted until Post is pressed.
 export async function offerFromPrompt($: EngineInterface, text: string): Promise<string> {
   if (!(await $.store.get('username'))) return 'Not signed in to /dev/null. Run /devnull login first.'
-  const body = text.trim()
+  // :rocket: → 🚀, as GitHub writes shortcodes.
+  const body = emojify(text.trim())
   if (body.length < 3) return 'Nothing to post: write at least 3 characters after /devnull post.'
   if (body.length > 4000) return `Not posted: /dev/null takes up to 4000 characters and this is ${body.length}.`
   const c = await read($, compose)
   const to = c.mode !== 'new' && c.targetId ? { mode: c.mode, id: c.targetId, ...(c.targetHandle ? { handle: c.targetHandle } : {}) } : undefined
   await offerPost($, body, to)
   return 'Ready above the prompt: press Post (or p) to send it, Edit to change it, or Dismiss.'
+}
+
+// A commit shown in an open reply thread changes there too (a star, a save).
+async function patchOpenReplies($: EngineInterface, id: string, patch: (row: CommitRow) => CommitRow): Promise<void> {
+  await update($, openReplies, o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, { ...v, replies: patchCommit(v.replies, id, patch) }])))
+}
+
+// After a reply is posted: its parent counts one more reply, and an open thread under it reloads to show it.
+export async function noteReply($: EngineInterface, parentId: string): Promise<void> {
+  await update($, feed, f => ({ ...f, commits: patchCommit(f.commits, parentId, r => ({ ...r, replies: r.replies + 1 })) }))
+  await reloadReplies($, parentId)
 }

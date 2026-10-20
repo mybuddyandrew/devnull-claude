@@ -1,6 +1,6 @@
 {
   "name": "devnull",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "/dev/null inside Claude Code: read your log and notifications, and commit, reply, quote, star and save, signed with a device SSH key",
   "author": {
     "name": "Andrew Hodson",

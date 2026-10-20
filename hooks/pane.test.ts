@@ -55,3 +55,32 @@ test('however many commits are loaded, the pane draws a bounded window', async (
   expect(await ui.find({ key: `star-0-${data[0]!.id}` })).toBeDefined()
   await ui.unmount()
 })
+
+test('switching back to a tab shows its list at once, then refreshes it', async ($, on) => {
+  mock.store(on, { username: 'me' })
+  mock.env(on, { HOME: '/tmp/devnull-test' })
+  mock.clock(on, { now: Date.parse('2026-10-19T19:00:00Z') })
+  on('process.run', async () => ({ value: { exitCode: 0, stdout: '-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('fs.exists', async () => ({ value: true }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('ui.toast', async () => ({ value: undefined }))
+  // Following answers once, then fails, so what shows after switching back can only be the kept list.
+  let followingCalls = 0
+  on('http.fetch', async (_$, e) => {
+    const path = new URL(e.url).pathname
+    if (path === '/api/v1/log/following' && ++followingCalls > 1) return { value: { status: 500, ok: false, headers: {}, text: '{"message":"down"}' } }
+    const data = path === '/api/v1/log/latest' ? [commit(2)] : [commit(1)]
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ data, meta: {} }) } }
+  })
+  on('classic.SessionStart', async () => ({}))
+  await $.classic.SessionStart({ source: 'startup' })
+  await $.command.run({ command: 'devnull', args: '' } as never)
+
+  const ui = await $.ui.mount({ plugin: 'devnull', surface: 'desktop', ...PANE })
+  expect(await ui.find({ key: `star-0-${commit(1).id}` })).toBeDefined()
+  await ui.press({ key: 'tab-latest' })
+  expect(await ui.find({ key: `star-0-${commit(2).id}` })).toBeDefined()
+  await ui.press({ key: 'tab-following' })
+  expect(await ui.find({ key: `star-0-${commit(1).id}` })).toBeDefined()
+  await ui.unmount()
+})

@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { FOLLOWING } from './fixture'
 
-import { authorizeUrl, avatarSvg, laneColor, parseCallback, patchCommit, pictureSvg, preview, query, RAIL, signingMessage, target, toCommitRow, toNoteRow, unarmor } from './devnull'
+import { authorizeUrl, avatarSvg, laneColor, parseCallback, patchCommit, pictureSvg, preview, progressSvg, query, RAIL, signingMessage, skeletonSvg, spinnerSvg, target, toCommitRow, toNoteRow, unarmor } from './devnull'
 
 const PANE = {
   component: 'Pane',
@@ -97,4 +97,15 @@ test('a link preview becomes a card; a pending one is skipped', async () => {
   expect(row.preview).toEqual({ url: 'https://example.com/%40kim/song', title: 'A song', description: 'Listen', site: 'Suno', imageUrl: 'https://cdn.example.com/a.jpg' })
   expect(toCommitRow({ id: '2', author: {}, link_preview: { url: 'https://example.com', is_pending: true } }).preview).toBeUndefined()
   expect(toCommitRow({ id: '3', author: {}, link_preview: { url: 'https://www.example.com/x' } }).preview?.site).toBe('example.com')
+})
+
+test('loaders are small animated SVGs', async () => {
+  const sk = skeletonSvg(480, 40)
+  expect(sk.width).toBe(480)
+  expect(sk.source).toContain('<animate attributeName="opacity"')
+  expect(sk.source.length).toBeLessThan(1200)
+  const bar = progressSvg(300, '#7aa2f7')
+  expect(bar.height).toBe(2)
+  expect(bar.source).toContain('to="300"')
+  expect(spinnerSvg(14, '#a1a1a6')).toContain('animateTransform')
 })

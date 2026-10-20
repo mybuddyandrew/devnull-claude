@@ -3,11 +3,12 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderInput } from 'claude-code'
 
 import type { CommitRow, ConversationRow, InboxSection, Live, MessageRow } from '../types'
-import { MENTION_HREF, NOTE_KINDS, pictureSvg, TAIL_HEIGHT, ago, avatarSvg, handleFromHref, linkMentions, mentionsIn, preview, tailSvg, underlineSvg } from './devnull'
-import { aim, react, refresh, show, startInPrompt } from './feed'
+import { MENTION_HREF, NOTE_KINDS, pictureSvg, progressSvg, skeletonSvg, spinnerSvg, TAIL_HEIGHT, ago, avatarSvg, handleFromHref, linkMentions, mentionsIn, preview, tailSvg, underlineSvg } from './devnull'
+import { aim, offerFromPrompt, react, refresh, show, startInPrompt } from './feed'
 import { startLogin, syncLogin } from './login'
 import { closeProfile, openProfile, toggleFollow } from './profile'
 import { answerRequest, checkRemotes, closeThread, loadInbox, openThread, pingTyping, retryMessage, setStashed, toggleReaction } from './remotes'
+import { toggleReplies } from './replies'
 import { heatmapSvg } from './streaks'
 import {
   AVATAR_BUDGET_CHARS,
@@ -22,7 +23,9 @@ import {
   INITIAL_LIVE,
   INITIAL_PULL,
   INITIAL_INBOX,
+  INITIAL_OPEN_REPLIES,
   INITIAL_PICTURES,
+  MAX_INLINE_REPLIES,
   INITIAL_THREAD,
   INITIAL_PROFILE,
   PICTURE_BUDGET_CHARS,
@@ -54,6 +57,7 @@ const windowStart = atom({ plugin: 'devnull', key: 'windowStart' } as const, INI
 const profile = atom({ plugin: 'devnull', key: 'profile' } as const, INITIAL_PROFILE)
 const pictures = atom({ plugin: 'devnull', key: 'pictures' } as const, INITIAL_PICTURES)
 const inbox = atom({ plugin: 'devnull', key: 'inbox' } as const, INITIAL_INBOX)
+const openReplies = atom({ plugin: 'devnull', key: 'openReplies' } as const, INITIAL_OPEN_REPLIES)
 const thread = atom({ plugin: 'devnull', key: 'thread' } as const, INITIAL_THREAD)
 const stats = atom({ plugin: 'devnull', key: 'stats' } as const, INITIAL_STATS)
 
@@ -70,6 +74,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     const { Box, Text, Button, Link, Markdown } = els
     // The terminal draws no SVG: it gets a dot where the avatar would be.
     const Svg = 'Svg' in els ? els.Svg : undefined
+    const Input = 'Input' in els ? els.Input : undefined
     const showing = await read($, tab)
     const f = await read($, feed)
     const who = await read($, login)
@@ -82,8 +87,39 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     const person = await read($, profile)
     const images = await read($, pictures)
     const box = await read($, inbox)
+    const threads = await read($, openReplies)
     const chat = await read($, thread)
     const myId = (await $.store.get('userId').catch(() => undefined)) as string | undefined
+
+    // Loaders: skeleton rows the first time a list loads, a sweeping bar while one refreshes over what's
+    // shown, and a spinner beside a button. Text stands in where a surface draws no SVG.
+    const loaderWidth = Math.min(640, Math.max(240, ((e.props as { bodyColumns?: number }).bodyColumns ?? 60) * 8))
+    const skeletons = (n: number, avatar = 40) =>
+      Svg
+        ? Array.from({ length: n }, (_, i) => {
+            const sk = skeletonSvg(loaderWidth, avatar)
+            return (
+              <Box key={`sk-${i}`} paddingY={1}>
+                <Svg source={sk.source} alt="Loading" width={sk.width} height={sk.height} isInteractive />
+              </Box>
+            )
+          })
+        : [<Text key="sk-text" color={MUTED}>Loading…</Text>]
+    const progressBar = (key: string) => {
+      if (!Svg) return null
+      const bar = progressSvg(loaderWidth, PRIMARY)
+      return (
+        <Box key={key} paddingBottom={1}>
+          <Svg source={bar.source} alt="Refreshing" width={bar.width} height={bar.height} isInteractive />
+        </Box>
+      )
+    }
+    const busy = (key: string, label: string) => (
+      <Box key={key} flexDirection="row" alignItems="center" columnGap={1}>
+        {Svg && <Svg source={spinnerSvg(14, MUTED)} alt="Loading" width={14} height={14} isInteractive />}
+        <Text color={MUTED}>{label}</Text>
+      </Box>
+    )
     const me = await read($, stats)
     const now = Date.now()
 
@@ -105,12 +141,12 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
           {/* Remotes only shows once dev-null.sh serves it and you have it switched on. */}
           {TABS.filter(t => t !== 'remotes' || fresh.remotesOn || showing === 'remotes').map(t => (
             <Box key={`tabbox-${t}`} flexDirection="column" alignItems="center" rowGap={0}>
-              <Button key={`tab-${t}`} plain label={t === 'notifications' && fresh.unread > 0 ? `${LABELS[t]} (${fresh.unread})` : t === 'remotes' && (fresh.remotesUnread ?? 0) > 0 ? `${LABELS[t]} (${fresh.remotesUnread})` : LABELS[t]} {...(t === showing ? {} : { dimColor: true as const })} onPress={() => show($, t)} />
+              <Button key={`tab-${t}`} plain label={t === 'notifications' && fresh.unread > 0 ? `${LABELS[t]} (${fresh.unread})` : t === 'remotes' && (fresh.remotesUnread ?? 0) > 0 ? `${LABELS[t]} (${fresh.remotesUnread})` : LABELS[t]} {...(t === showing ? {} : { dimColor: true as const })} onPress={() => void show($, t)} />
               {t === showing && Svg && <Svg source={underlineSvg(LABELS[t].length * 8)} alt="Selected tab" width={LABELS[t].length * 8} height={3} />}
             </Box>
           ))}
         </Box>
-        <Button key="refresh" plain dimColor label={f.isLoading ? 'Loading…' : '↻ Refresh'} onPress={() => refreshToTop($)} />
+        {(showing === 'remotes' ? box.isLoading : f.isLoading && !f.isLoadingMore) ? busy('refreshing', 'Refreshing') : <Button key="refresh" plain dimColor label="↻ Refresh" onPress={() => void refreshToTop($)} />}
       </Box>
     )
 
@@ -134,25 +170,36 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     }
 
     const targetLabel = draft.mode === 'reply' ? `Replying to @${draft.targetHandle}` : draft.mode === 'quote' ? `Quoting @${draft.targetHandle}` : undefined
-    // The composer is a full-width box that starts the post in Claude's prompt box: the pane's own text
-    // field can't be made wider or multi-line on the desktop, the prompt box is both.
+    // The composer: a quick one-line field here, and Claude's prompt box for anything longer (the pane's
+    // field can't be made wider or multi-line on the desktop; the prompt box is both). Either way the post
+    // waits above the prompt for Post.
     const composer = (
       <Box flexDirection="column" width="100%" borderStyle="round" borderColor={draft.mode === 'new' ? HAIRLINE : PRIMARY} paddingX={1} paddingY={1} marginBottom={1}>
         {targetLabel && (
           <Box flexDirection="row" justifyContent="space-between" paddingBottom={1}>
             <Text color={PRIMARY}>{targetLabel}</Text>
-            <Button key="compose-cancel" plain dimColor label="Cancel" onPress={() => aim($, 'new')} />
+            <Button key="compose-cancel" plain dimColor label="Cancel" onPress={() => void aim($, 'new')} />
           </Box>
         )}
-        <Box flexDirection="row" justifyContent="space-between" alignItems="center">
-          <Button
-            key="compose-open"
-            plain
-            dimColor
-            label={draft.mode === 'reply' ? 'Write your reply…' : draft.mode === 'quote' ? 'Add your take…' : "What's on your mind?"}
-            onPress={() => composeInPrompt($)}
-          />
-          <Button key="compose-go" variant="primary" label={draft.mode === 'reply' ? 'Reply' : draft.mode === 'quote' ? 'Quote' : 'Commit'} onPress={() => composeInPrompt($)} />
+        <Box flexDirection="row" justifyContent="space-between" alignItems="center" columnGap={2}>
+          {Input ? (
+            <Input
+              key={`compose-${draft.round}`}
+              placeholder={draft.mode === 'reply' ? 'Write your reply' : draft.mode === 'quote' ? 'Add your take' : "What's on your mind?"}
+              submitLabel={draft.mode === 'reply' ? 'Reply' : draft.mode === 'quote' ? 'Quote' : 'Commit'}
+              onSubmit={(value: string) => {
+                void (async () => {
+                  const said = await offerFromPrompt($, value)
+                  // Offered: the field clears and the post waits above the prompt; otherwise say why.
+                  if (said.startsWith('Ready')) await update($, compose, c => ({ ...c, round: c.round + 1 }))
+                  else $.ui.toast(`/dev/null: ${said}`)
+                })()
+              }}
+            />
+          ) : (
+            <Text color={MUTED}>{draft.mode === 'reply' ? 'Write your reply…' : draft.mode === 'quote' ? 'Add your take…' : "What's on your mind?"}</Text>
+          )}
+          <Button key="compose-open" plain dimColor label="✎ Write in prompt box" onPress={() => void composeInPrompt($)} />
         </Box>
         {draft.error && <Text color={DANGER}>Not sent: {draft.error}</Text>}
       </Box>
@@ -176,7 +223,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               <Text size={depth === 0 ? 'heading' : 'body'} weight="semibold" wrap="truncate-end">
                 {c.name ?? c.username}
               </Text>
-              <Button key={`who-${depth}-${c.id}`} plain dimColor label={`@${c.username}`} onPress={() => openProfile($, c.username)} />
+              <Button key={`who-${depth}-${c.id}`} plain dimColor label={`@${c.username}`} onPress={() => void openProfile($, c.username)} />
               <Text size="footnote" color={MUTED}>
                 · {ago(c.createdAt, now)}
               </Text>
@@ -209,7 +256,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
                 key={`more-${depth}-${c.id}`}
                 plain
                 label={isOpen ? 'Show less' : 'Show more'}
-                onPress={() => update($, expanded, ids => (isOpen ? ids.filter(id => id !== c.id) : [...ids, c.id]))}
+                onPress={() => void update($, expanded, ids => (isOpen ? ids.filter(id => id !== c.id) : [...ids, c.id]))}
               />
             </Box>
           )}
@@ -281,20 +328,40 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
                 plain
                 {...(c.isStarred ? {} : { dimColor: true as const })}
                 label={`${c.isStarred ? '★' : '☆'}${c.stars > 0 ? ` ${c.stars}` : ''}`}
-                onPress={() => react($, c, 'star')}
+                onPress={() => void react($, c, 'star')}
               />
-              {depth === 0 && <Button key={`quote-${c.id}`} plain dimColor label="❝ Quote" onPress={() => composeInPrompt($, 'quote', c)} />}
-              <Button key={`reply-${depth}-${c.id}`} plain dimColor label={`↩ Reply${c.replies > 0 ? ` ${c.replies}` : ''}`} onPress={() => composeInPrompt($, 'reply', c)} />
+              {depth === 0 && <Button key={`quote-${c.id}`} plain dimColor label="❝ Quote" onPress={() => void composeInPrompt($, 'quote', c)} />}
+              <Button key={`reply-${depth}-${c.id}`} plain dimColor label="↩ Reply" onPress={() => void composeInPrompt($, 'reply', c)} />
+              {c.replies > 0 && depth < 3 && (
+                <Button
+                  key={`thread-${depth}-${c.id}`}
+                  plain
+                  {...(threads[c.id] ? {} : { dimColor: true as const })}
+                  label={threads[c.id] ? `▾ Hide ${c.replies === 1 ? 'reply' : 'replies'}` : `▸ ${c.replies} ${c.replies === 1 ? 'reply' : 'replies'}`}
+                  onPress={() => void toggleReplies($, c.id)}
+                />
+              )}
             </Box>
             <Button
               key={`save-${depth}-${c.id}`}
               plain
               {...(c.isSaved ? {} : { dimColor: true as const })}
               label={c.isSaved ? '■ Saved' : '□ Save'}
-              onPress={() => react($, c, 'save')}
+              onPress={() => void react($, c, 'save')}
             />
           </Box>
-          {c.replyPreview.map(r => commit(r, depth + 1))}
+          {(() => {
+            // An open thread shows every reply (up to a cap) in place of the one-reply preview.
+            const open = threads[c.id]
+            if (!open) return c.replyPreview.map(r => commit(r, depth + 1))
+            if (open.status === 'loading') return skeletons(1, 32)
+            if (open.status === 'failed') return <Text color={DANGER}>{`Couldn't load the replies: ${open.error ?? ''}`}</Text>
+            return [
+              ...open.replies.slice(0, MAX_INLINE_REPLIES).map(r => commit(r, depth + 1)),
+              ...(open.replies.length > MAX_INLINE_REPLIES && c.url ? [<Link key={`thread-all-${c.id}`} href={c.url} label={`All ${open.replies.length} replies on dev-null.sh`} />] : []),
+              ...(open.replies.length === 0 ? [<Text key={`thread-none-${c.id}`} color={MUTED}>No replies to show.</Text>] : []),
+            ]
+          })()}
         </Box>
       </Box>
       )
@@ -309,7 +376,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1}>
               {n.isUnread && <Text color={PRIMARY}>●</Text>}
               <Text color={n.type === 'starred' ? STAR : n.lane}>{kind?.glyph ?? '•'}</Text>
-              <Button key={`actor-${n.id}`} plain label={`@${n.actor}`} onPress={() => openProfile($, n.actor)} />
+              <Button key={`actor-${n.id}`} plain label={`@${n.actor}`} onPress={() => void openProfile($, n.actor)} />
               <Text>
                 {n.others > 0 ? `and ${n.others} ${n.others === 1 ? 'other' : 'others'} ` : ''}
                 {kind?.verb ?? n.type}
@@ -335,7 +402,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             <Text color={MUTED}> · longest {me.longest}</Text>
           </Text>
           <Box flexDirection="row">
-            <Button key="my-profile" plain dimColor label={`@${me.username} · your profile`} onPress={() => openProfile($, me.username)} />
+            <Button key="my-profile" plain dimColor label={`@${me.username} · your profile`} onPress={() => void openProfile($, me.username)} />
           </Box>
           {(me.rank || me.xp !== undefined) && (
             <Text color={MUTED}>
@@ -366,7 +433,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
           <Box flexShrink={0}>{ring(r.lane, r.avatarUser ?? r.title, 36)}</Box>
           <Box flexDirection="column" flexGrow={1} flexShrink={1}>
             <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
-              <Button key={`rm-open-${r.id}`} plain label={r.isOrg ? `${r.title} · org` : r.title} onPress={() => openThread($, r)} />
+              <Button key={`rm-open-${r.id}`} plain label={r.isOrg ? `${r.title} · org` : r.title} onPress={() => void openThread($, r)} />
               <Text size="footnote" color={r.ahead > 0 ? PRIMARY : MUTED}>
                 {r.ahead > 0 ? `${r.ahead} ahead` : ago(r.lastAt, now)}
               </Text>
@@ -403,10 +470,10 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               {(groups.length > 0 || (!m.isMine && m.id > 0)) && (
                 <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
                   {groups.map(g => (
-                    <Button key={`rx-${m.id}-${g.emoji}`} plain {...(g.isMine ? {} : { dimColor: true as const })} label={`${g.emoji} ${g.count}`} onPress={() => toggleReaction($, m.id, g.emoji)} />
+                    <Button key={`rx-${m.id}-${g.emoji}`} plain {...(g.isMine ? {} : { dimColor: true as const })} label={`${g.emoji} ${g.count}`} onPress={() => void toggleReaction($, m.id, g.emoji)} />
                   ))}
                   {!m.isMine && m.id > 0 && QUICK.filter(q => !groups.some(g => g.emoji === q)).map(q => (
-                    <Button key={`rq-${m.id}-${q}`} plain dimColor label={q} onPress={() => toggleReaction($, m.id, q)} />
+                    <Button key={`rq-${m.id}-${q}`} plain dimColor label={q} onPress={() => void toggleReaction($, m.id, q)} />
                   ))}
                 </Box>
               )}
@@ -414,7 +481,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               {m.status === 'rejected' && m.clientId && (
                 <Box flexDirection="row" columnGap={2}>
                   <Text size="footnote" color={DANGER}>rejected</Text>
-                  <Button key={`retry-${m.clientId}`} plain label="Retry" onPress={() => retryMessage($, m.clientId!)} />
+                  <Button key={`retry-${m.clientId}`} plain label="Retry" onPress={() => void retryMessage($, m.clientId!)} />
                 </Box>
               )}
             </Box>
@@ -429,9 +496,9 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
         return (
           <Box flexDirection="column">
             <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingBottom={1}>
-              <Button key="thread-back" plain label="← Remotes" onPress={() => closeThread($)} />
+              <Button key="thread-back" plain label="← Remotes" onPress={() => void closeThread($)} />
               {chat.status === 'ready' && (
-                <Button key="thread-stash" plain dimColor label={chat.isArchived ? 'Pop' : 'Stash'} onPress={() => setStashed($, !chat.isArchived)} />
+                <Button key="thread-stash" plain dimColor label={chat.isArchived ? 'Pop' : 'Stash'} onPress={() => void setStashed($, !chat.isArchived)} />
               )}
             </Box>
             <Box flexDirection="row" alignItems="center" columnGap={2} paddingBottom={1}>
@@ -445,7 +512,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
                 </Text>
               </Box>
             </Box>
-            {chat.status === 'loading' && <Text color={MUTED}>Loading…</Text>}
+            {chat.status === 'loading' && skeletons(3, 32)}
             {chat.status === 'failed' && <Text color={DANGER}>Couldn't open this remote: {chat.error}</Text>}
             {chat.hasOlder && chat.messages.length > 0 && <Text size="footnote" color={MUTED}>Older messages are on dev-null.sh.</Text>}
             {shown.map(m => bubble(m, m.id === lastMine))}
@@ -454,8 +521,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
                 <Box flexDirection="column" rowGap={1}>
                   <Text>{`@${chat.target} wants to push to you.`}</Text>
                   <Box flexDirection="row" columnGap={2}>
-                    <Button key="req-merge" variant="primary" label="Merge" onPress={() => answerRequest($, 'merge')} />
-                    <Button key="req-drop" label="Drop" onPress={() => answerRequest($, 'drop')} />
+                    <Button key="req-merge" variant="primary" label="Merge" onPress={() => void answerRequest($, 'merge')} />
+                    <Button key="req-drop" label="Drop" onPress={() => void answerRequest($, 'drop')} />
                   </Box>
                 </Box>
               )}
@@ -468,9 +535,9 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
                     key="thread-reply"
                     variant="primary"
                     label="Write a message"
-                    onPress={async () => {
-                      await $.prompt.fill({ text: `/devnull remote ${handleOf(chat.isOrg, chat.target)} ` }).catch(() => {})
-                      await pingTyping($)
+                    onPress={() => {
+                      void $.prompt.fill({ text: `/devnull remote ${handleOf(chat.isOrg, chat.target)} ` }).catch(() => {})
+                      void pingTyping($)
                     }}
                   />
                 </Box>
@@ -486,18 +553,19 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
           {tabs}
           <Box flexDirection="row" columnGap={3} paddingBottom={1}>
             {sections.map(sec => (
-              <Button key={`rs-${sec.id}`} plain {...(sec.id === box.section ? {} : { dimColor: true as const })} label={sec.label} onPress={() => loadInbox($, sec.id)} />
+              <Button key={`rs-${sec.id}`} plain {...(sec.id === box.section ? {} : { dimColor: true as const })} label={sec.label} onPress={() => void loadInbox($, sec.id)} />
             ))}
           </Box>
           {box.error && <Text color={DANGER}>{box.error}</Text>}
-          {box.isLoading && box.rows.length === 0 && <Text color={MUTED}>Loading…</Text>}
+          {box.isLoading && box.rows.length === 0 && skeletons(4, 36)}
+          {box.isLoading && box.rows.length > 0 && progressBar('inbox-progress')}
           {!box.isLoading && !box.error && box.rows.length === 0 && (
             <Text color={MUTED}>{box.section === 'stashed' ? 'Nothing stashed.' : box.section === 'fetched' ? 'No requests.' : 'No remotes yet. Open someone’s profile to start one.'}</Text>
           )}
           {box.rows.slice(0, 30).map(inboxRow)}
           {box.hasMore && (
             <Box flexDirection="row" justifyContent="center" paddingY={1}>
-              <Button key="rm-more" label={box.isLoading ? 'Loading…' : 'Load more'} onPress={() => loadInbox($, undefined, true)} />
+              {box.isLoading ? busy('rm-loading', 'Loading more') : <Button key="rm-more" label="Load more" onPress={() => void loadInbox($, undefined, true)} />}
             </Box>
           )}
         </Box>
@@ -512,17 +580,18 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
       return (
         <Box flexDirection="column">
           <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingBottom={1}>
-            <Button key="profile-back" plain label="← Back" onPress={() => closeProfile($)} />
+            <Button key="profile-back" plain label="← Back" onPress={() => void closeProfile($)} />
             {v && !v.isMe && (
               <Button
                 key="profile-follow"
                 variant={v.isFollowing ? 'secondary' : 'primary'}
                 label={person.isFollowBusy ? '…' : v.isFollowing ? 'Following ✓' : 'Follow'}
-                onPress={() => toggleFollow($)}
+                onPress={() => void toggleFollow($)}
               />
             )}
           </Box>
-          {person.status === 'loading' && <Text color={MUTED}>Loading @{person.username}…</Text>}
+          {person.status === 'loading' && skeletons(1, 64)}
+          {person.status === 'loading' && skeletons(3, 44)}
           {person.status === 'failed' && <Text color={DANGER}>Couldn't load @{person.username}: {person.error}</Text>}
           {v && (
             <Box flexDirection="column" rowGap={1} paddingBottom={1}>
@@ -604,14 +673,18 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               key="new-commits"
               variant="primary"
               label={`↑ ${fresh.newCount} new ${fresh.newCount === 1 ? 'commit' : 'commits'}`}
-              onPress={async () => {
-                await update($, live, (l): Live => ({ ...l, newCount: 0 }))
-                await refreshToTop($)
+              onPress={() => {
+                void (async () => {
+                  await update($, live, (l): Live => ({ ...l, newCount: 0 }))
+                  await refreshToTop($)
+                })()
               }}
             />
           </Box>
         )}
         {f.error && <Text color={DANGER}>Couldn't load: {f.error}</Text>}
+        {f.isLoading && !f.isLoadingMore && !isEmpty && progressBar('feed-progress')}
+        {f.isLoading && isEmpty && skeletons(showing === 'notifications' ? 6 : 4, showing === 'notifications' ? 36 : 44)}
         {isEmpty && !f.isLoading && !f.error && (
           <Text color={MUTED}>
             {showing === 'notifications' ? 'No notifications yet.' : showing === 'following' ? 'Nobody you follow has committed yet. Try Latest.' : 'Nothing here yet.'}
@@ -619,13 +692,13 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
         )}
         {start > 0 && (
           <Box flexDirection="row" justifyContent="center" paddingBottom={1}>
-            <Button key="newer" label={`↑ Newer ${showing === 'notifications' ? 'notifications' : 'commits'}`} onPress={() => slide($, -1)} />
+            <Button key="newer" label={`↑ Newer ${showing === 'notifications' ? 'notifications' : 'commits'}`} onPress={() => void slide($, -1)} />
           </Box>
         )}
         {showing === 'notifications' ? (drawn as typeof f.notifications).map(note) : (drawn as CommitRow[]).map(c => commit(c, 0))}
         {(start + MAX_DRAWN < rows.length || f.nextCursor) && !isEmpty && (
           <Box flexDirection="row" justifyContent="center" paddingY={1}>
-            {f.isLoading ? <Text color={MUTED}>Loading more…</Text> : <Button key="more" label="Load more" onPress={() => slide($, 1)} />}
+            {f.isLoadingMore ? busy('loading-more', 'Loading more') : <Button key="more" label="Load more" onPress={() => void slide($, 1)} />}
           </Box>
         )}
       </Box>
