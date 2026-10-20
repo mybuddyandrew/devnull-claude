@@ -22,30 +22,38 @@ export function registerScroll(on: On): void {
     if (await read($, profile)) return moved
     if ((await read($, tab)) === 'remotes') return moved
     const now = await $.clock.now()
+    // The network work runs on its own, so the scroll is never held up by it.
     if (e.by < 0 && e.offset === 0 && (await read($, windowStart)) > 0) {
       // Deep in the list, the top of the pane is only the top of the drawn window: bring back newer rows.
-      await slide($, -1)
+      void slide($, -1)
       return moved
     }
     if (e.by < 0 && e.offset === 0) {
-      const ticks = now - lastPullAt > PULL_WINDOW_MS ? 1 : (await read($, pull)) + 1
+      const step = pullStep({ ticks: await read($, pull), lastAt: lastPullAt }, now, isPulling)
       lastPullAt = now
-      if (ticks >= PULL_TICKS) {
+      if (step.fire) {
+        isPulling = true
         await update($, pull, () => PULL_TICKS)
-        await refreshToTop($)
-        await update($, pull, () => 0)
-      } else {
-        await update($, pull, () => ticks)
+        void (async () => {
+          try {
+            await refreshToTop($)
+          } finally {
+            isPulling = false
+            await update($, pull, () => 0)
+          }
+        })()
+      } else if (!isPulling) {
+        await update($, pull, () => step.ticks)
         $.clock.after(PULL_WINDOW_MS, () => {
           void (async () => {
-            if ((await $.clock.now()) - lastPullAt >= PULL_WINDOW_MS) await update($, pull, () => 0)
+            if (!isPulling && (await $.clock.now()) - lastPullAt >= PULL_WINDOW_MS) await update($, pull, () => 0)
           })()
         })
       }
       return moved
     }
     if (e.by > 0) {
-      if ((await read($, pull)) > 0) await update($, pull, () => 0)
+      if (!isPulling && (await read($, pull)) > 0) await update($, pull, () => 0)
       const f = await read($, feed)
       if (!f.isLoading && e.offset + e.bodyRows >= e.contentRows - LOAD_MORE_ROWS) void slide($, 1)
     }
@@ -56,6 +64,15 @@ export function registerScroll(on: On): void {
 // Pull ticks further apart than this start over.
 const PULL_WINDOW_MS = 1500
 let lastPullAt = 0
+// Set while a pull's refresh runs: the wheel ticks that follow (inertia) start no other.
+let isPulling = false
+
+// One wheel tick up at the top: how many in a row it makes, and whether that is enough to refresh.
+export const pullStep = (prev: { ticks: number; lastAt: number }, now: number, pulling: boolean): { ticks: number; fire: boolean } => {
+  if (pulling) return { ticks: prev.ticks, fire: false }
+  const ticks = now - prev.lastAt > PULL_WINDOW_MS ? 1 : prev.ticks + 1
+  return ticks >= PULL_TICKS ? { ticks: PULL_TICKS, fire: true } : { ticks, fire: false }
+}
 
 // The key each drawn row's Box carries, for scrolling a row back into view after the window moves.
 const rowKey = (isNote: boolean, id: string) => (isNote ? `n-${id}` : `c-0-${id}`)

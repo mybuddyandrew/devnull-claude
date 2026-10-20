@@ -5,7 +5,10 @@ import type { EngineInterface, Timer } from 'claude-code'
 import type { Login } from '../types'
 import { api, ensureHandler, ensureKey, paths, run } from './api'
 import { authorizeUrl, base64Url, challenge, fingerprintOf, parseCallback, randomBytes } from './sign'
-import { show } from './feed'
+import { forgetFeed, show } from './feed'
+import { checkRemotes, forgetMe } from './me'
+import { forgetRemotes } from './remotes'
+import { forgetStats } from './streaks'
 import {
   BIN,
   INITIAL_LOGIN,
@@ -44,6 +47,8 @@ export async function finish($: EngineInterface, url: string): Promise<string> {
     await $.store.set('username', username)
     await update($, login, (): Login => ({ status: 'signed-in', username }))
     $.ui.toast(`/dev/null: signed in as @${username}`)
+    // This account's id (which Remotes messages are yours) and counts, read afresh.
+    await checkRemotes($)
     await show($, 'following')
     return `Signed in to dev-null.sh as @${username}.`
   } catch (error) {
@@ -98,7 +103,10 @@ export async function logout($: EngineInterface): Promise<string> {
   await $.store.delete('username')
   await $.store.delete('pending')
   await update($, login, (): Login => ({ status: 'signed-out' }))
-  await show($, 'following')
+  await forgetFeed($)
+  await forgetRemotes($)
+  await forgetMe($)
+  await forgetStats($)
   return 'Signed out here. The device key stays in ~/.devnull-claude; remove the device on dev-null.sh to revoke it.'
 }
 

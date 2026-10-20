@@ -113,6 +113,13 @@ export function stopPolling(): void {
   poller = undefined
 }
 
+// Signed out: the poll stops and the inbox and thread are emptied.
+export async function forgetRemotes($: EngineInterface): Promise<void> {
+  stopPolling()
+  await update($, thread, (): Thread | null => null)
+  await update($, inbox, (): Inbox => INITIAL_INBOX)
+}
+
 // Polls the open thread for new messages, reaction changes, typing and read receipts, as the phone app does.
 export function startPolling($: EngineInterface): void {
   stopPolling()

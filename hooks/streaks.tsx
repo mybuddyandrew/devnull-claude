@@ -95,6 +95,12 @@ export const statusLine = (s: Stats, l: Live): string => {
   return `/dev/null: ${parts.join(' · ')}`
 }
 
+// Signed out: the header and status line clear.
+export async function forgetStats($: EngineInterface): Promise<void> {
+  await update($, stats, (): Stats | null => null)
+  $.ui.status(undefined)
+}
+
 export async function loadStats($: EngineInterface): Promise<void> {
   const username = (await $.store.get('username')) as string | undefined
   if (!username) return
