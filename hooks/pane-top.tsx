@@ -47,7 +47,7 @@ export async function drawTop($: EngineInterface, kit: Kit) {
     <Box flexDirection="row" justifyContent="space-between" alignItems="center" columnGap={2} paddingBottom={1} flexWrap="wrap">
       <Box flexDirection="column">
         <Text>
-          <Text bold>{me.streak > 0 ? `🔥 ${me.streak}-day streak` : 'No streak yet'}</Text>
+          <Text weight="bold">{me.streak > 0 ? `🔥 ${me.streak}-day streak` : 'No streak yet'}</Text>
           <Text color={MUTED}> · longest {me.longest}</Text>
         </Text>
         <Box flexDirection="row">

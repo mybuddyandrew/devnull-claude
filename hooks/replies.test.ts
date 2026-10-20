@@ -38,7 +38,7 @@ function server(on: On) {
     calls.push({ method, path, ...(e.init?.body ? { body: e.init.body } : {}) })
     const reply = (body: unknown) => ({ value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body) } })
     if (path === `/api/v1/commits/${PARENT}/replies`) return reply({ data: [commit(REPLY, 'a reply')] })
-    if (path === `/api/v1/commits/${REPLY}/star`) return reply({ data: commit(REPLY, 'a reply', { stars_count: 1, starred: true }) })
+    if (path === `/api/v1/commits/${REPLY}/star`) return reply({ data: commit(REPLY, 'a reply', { stars_count: 5, starred: true }) })
     if (path === '/api/v1/commits' && method === 'POST') {
       replies++
       return reply({ data: commit('00000000-0000-4000-8000-000000000009', 'posted') })
@@ -78,7 +78,8 @@ test('a post opens its replies inline; a reply can be starred there; it folds aw
 
   await ui.press({ key: `star-1-${REPLY}` })
   expect(calls.some(c => c.method === 'POST' && c.path === `/api/v1/commits/${REPLY}/star`)).toBe(true)
-  expect((await ui.find({ key: `star-1-${REPLY}` }))?.text).toContain('★ 1')
+  // dev-null.sh's own count (5), not just the optimistic +1.
+  expect((await ui.find({ key: `star-1-${REPLY}` }))?.text).toContain('★ 5')
 
   await ui.press({ key: `thread-0-${PARENT}` })
   expect(await ui.find({ key: `star-1-${REPLY}` })).toBeUndefined()
@@ -128,6 +129,10 @@ test('GitHub shortcodes turn into emoji outside code, and complete from a few le
   expect(emojify('```\n:tada:\n```\n:tada:')).toBe('```\n:tada:\n```\n🎉')
   const st = searchEmoji('st')
   expect(st.length).toBeGreaterThan(0)
-  expect(st.every(e => e.code.startsWith('st') || e.code.includes('st'))).toBe(true)
+  expect(st.every(e => e.code.includes('st'))).toBe(true)
+  // Codes that start with what was typed come before ones that only contain it.
+  const firstContains = st.findIndex(e => !e.code.startsWith('st'))
+  expect(st.slice(firstContains === -1 ? st.length : firstContains).every(e => !e.code.startsWith('st'))).toBe(true)
+  expect(searchEmoji('tada')[0]?.code).toBe('tada')
   expect(searchEmoji('star').some(e => e.emoji === '⭐')).toBe(true)
 })

@@ -200,3 +200,15 @@ test('Reply starts the post in the prompt box without throwing away what you had
   expect(fills.at(-1)).toBe('/devnull post half a thought')
   await ui.unmount()
 })
+
+test('what you type in the pane field survives a redraw', async ($, on) => {
+  server(on, f =>
+    f.path === `/api/v1/commits/${ID(1)}/star` ? { body: { data: commit(1, { stars_count: 1, starred: true }) } } : f.path === '/api/v1/log/following' ? { body: { data: [commit(1)], meta: {} } } : { body: { data: { id: 'u1' } } },
+  )
+  const ui = await openPane($)
+  await ui.input({ key: 'compose-0', text: 'half typed', kind: 'change' })
+  // A star press redraws the pane while the field holds unsent text.
+  await ui.press({ key: `star-0-${ID(1)}` })
+  expect((await ui.find({ key: 'compose-0' }))?.props.value).toBe('half typed')
+  await ui.unmount()
+})

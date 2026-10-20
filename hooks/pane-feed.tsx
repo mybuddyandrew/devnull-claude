@@ -37,6 +37,11 @@ const pull = atom({ plugin: 'devnull', key: 'pull' } as const, INITIAL_PULL)
 const tab = atom({ plugin: 'devnull', key: 'tab' } as const, INITIAL_TAB)
 const windowStart = atom({ plugin: 'devnull', key: 'windowStart' } as const, INITIAL_WINDOW_START)
 
+// What is typed in the pane's field so far, handed back as its value on every draw so a redraw (a poll, an
+// avatar, a star) never empties it. Kept here rather than in $.state: a write per key would redraw the pane per
+// key. A new round (the post offered) starts the field empty.
+let typed = { round: -1, text: '' }
+
 export async function drawFeed($: EngineInterface, kit: Kit, top: Top, commit: DrawCommit) {
   const { Box, Text, Button } = kit.els
   const { Input, busy, now, progressBar, ring, skeletons } = kit
@@ -64,6 +69,10 @@ export async function drawFeed($: EngineInterface, kit: Kit, top: Top, commit: D
         {Input ? (
           <Input
             key={`compose-${draft.round}`}
+            value={typed.round === draft.round ? typed.text : ''}
+            onInput={(value: string) => {
+              typed = { round: draft.round, text: value }
+            }}
             placeholder={draft.mode === 'reply' ? 'Write your reply' : draft.mode === 'quote' ? 'Add your take' : "What's on your mind?"}
             submitLabel={draft.mode === 'reply' ? 'Reply' : draft.mode === 'quote' ? 'Quote' : 'Commit'}
             onSubmit={(value: string) => {

@@ -51,7 +51,8 @@ test('maps API commits and notifications to rows', async () => {
   expect(note).toMatchObject({ actor: 'a', others: 1, isUnread: true, excerpt: 'x' })
 })
 
-test('signed out, the pane offers sign-in on every surface', async $ => {
+test('signed out, the pane offers sign-in on every surface', async ($, on) => {
+  mock.clock(on, { now: Date.parse('2026-10-19T19:00:00Z') })
   for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
     const ui = await $.ui.mount({ plugin: 'devnull', surface, ...PANE })
     expect(await ui.find({ key: 'sign-in' })).toBeDefined()
