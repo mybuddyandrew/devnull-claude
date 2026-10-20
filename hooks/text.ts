@@ -12,6 +12,29 @@ export const untrusted = (text: string): string =>
     '</untrusted>',
   ].join('\n')
 
+// Paths that look like they hold secrets: env files, keys and certificates, credential files, a secrets folder.
+const SENSITIVE_PATHS = [
+  /(^|\/)\.env(\.[^/]*)?$/i,
+  /(^|\/)secrets?\//i,
+  /\.(pem|key|p12|pfx|jks|keystore)$/i,
+  /(^|\/)id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/i,
+  /(^|\/)(credentials|\.netrc|\.npmrc|\.pypirc)(\.[^/]*)?$/i,
+]
+
+// A `git show --stat` with each sensitive-looking path replaced: the draft's brief keeps how much changed, not
+// which secrets file it was. A rename ({old => new}) is checked on both sides.
+export const scrubStat = (stat: string): string =>
+  stat
+    .split('\n')
+    .map(line => {
+      const m = /^(\s*)(.+?)(\s+\|\s+.*)$/.exec(line)
+      if (!m) return line
+      const path = m[2]!.trim()
+      const sides = [path, ...path.split(/[{}]|\s=>\s/).map(p => p.trim()).filter(Boolean)]
+      return sides.some(p => SENSITIVE_PATHS.some(re => re.test(p))) ? `${m[1]}(a sensitive file)${m[3]}` : line
+    })
+    .join('\n')
+
 // Only https images on a public host are fetched: no plain http, no localhost, no bare IP addresses.
 export const safeImageUrl = (url: string): boolean => {
   let u: URL

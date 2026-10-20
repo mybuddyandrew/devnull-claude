@@ -23,7 +23,7 @@ function stand(on: On, opts: { username?: string; fork?: 'ok' | 'fail'; below?: 
   on('process.run', async (_$: unknown, e: { argv?: readonly string[] }) => {
     const isGit = e.argv?.[0] === '/usr/bin/git'
     if (isGit && opts.git === 'none') return { value: { exitCode: 128, stdout: '', stderr: 'not a git repository', isStdoutTruncated: false, isStderrTruncated: false } }
-    const stdout = isGit ? 'Add thing\n\n hooks/ship.tsx | 12 ++++++------\n' : '-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n'
+    const stdout = isGit ? 'Add thing\n\n hooks/ship.tsx | 12 ++++++------\n config/secrets/acme.yml | 2 +-\n' : '-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n'
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('session.cwd', async () => ({ value: '/tmp/devnull-test/repo' }) as never)
@@ -66,6 +66,9 @@ test('/devnull ship drafts with Haiku from the latest commit, never the whole se
   expect(calls.forks).toBe(0)
   expect(calls.completes).toBe(1)
   expect(calls.prompts[0]).toContain('Add thing')
+  expect(calls.prompts[0]).toContain('hooks/ship.tsx')
+  // A secrets path never reaches the model.
+  expect(calls.prompts[0]).not.toContain('acme')
   const ui = await $.ui.mount({ plugin: 'devnull', surface: 'desktop', ...BAND })
   expect(await ui.find({ type: 'Text', text: /fallback post/ })).toBeDefined()
   expect(calls.fetches.some(f => f.method === 'POST')).toBe(false)
