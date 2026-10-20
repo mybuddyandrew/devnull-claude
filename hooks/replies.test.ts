@@ -52,6 +52,8 @@ function server(on: On) {
 function standIns(on: On) {
   mock.store(on, { username: 'me' })
   mock.env(on, { HOME: '/tmp/devnull-test' })
+  // Beneath this mod the band draws nothing of its own.
+  on('ui.render', { component: 'AbovePrompt' }, async () => ({ type: 'Box', props: {}, children: [] }) as never)
   mock.clock(on, { now: Date.parse('2026-10-19T19:00:00Z') })
   on('process.run', async () => ({ value: { exitCode: 0, stdout: '-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
   on('fs.exists', async () => ({ value: true }))

@@ -47,6 +47,8 @@ test('a profile reads its counts, follow state and earned badges only', async ()
 test('a handle opens the profile in the pane, Follow follows, Back returns', async ($, on) => {
   mock.store(on, { username: 'me' })
   mock.env(on, { HOME: '/tmp/devnull-test' })
+  // Beneath this mod the band draws nothing of its own.
+  on('ui.render', { component: 'AbovePrompt' }, async () => ({ type: 'Box', props: {}, children: [] }) as never)
   mock.clock(on, { now: NOW })
   on('process.run', async () => ({ value: { exitCode: 0, stdout: '-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
   on('fs.exists', async () => ({ value: true }))
@@ -84,6 +86,8 @@ test('a handle opens the profile in the pane, Follow follows, Back returns', asy
 test('the post band names who a post tags', async ($, on) => {
   mock.store(on, { username: 'me' })
   mock.env(on, { HOME: '/tmp/devnull-test' })
+  // Beneath this mod the band draws nothing of its own.
+  on('ui.render', { component: 'AbovePrompt' }, async () => ({ type: 'Box', props: {}, children: [] }) as never)
   on('classic.SessionStart', async () => ({}))
   await $.classic.SessionStart({ source: 'startup' })
   await $.command.run({ command: 'devnull', args: 'post thanks @ada and @grace for the help' } as never)

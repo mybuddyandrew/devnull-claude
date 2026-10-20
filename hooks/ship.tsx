@@ -71,6 +71,9 @@ async function askModel($: EngineInterface, prompt: string, maxTokens: number, t
 async function draft($: EngineInterface, kind: 'ship' | 'session', source: string, prompt: string): Promise<void> {
   const now = await read($, ship)
   if (now.status === 'drafting' || now.status === 'posting' || (now.status === 'ready' && now.source === source && now.kind === kind)) return
+  // Work shipped never replaces a post you typed or asked for that is waiting for Post.
+  if (kind === 'ship' && now.status === 'ready' && now.kind !== 'ship') return
+  cancelPostedTimer()
   await update($, ship, (s): Ship => ({ status: 'drafting', kind, source, round: s.round }))
   const { text, reason } = await askModel($, prompt, 200, 20000)
   // A dismissal or a newer draft while the model worked wins.
@@ -112,6 +115,7 @@ export async function offerPost($: EngineInterface, text: string, to?: Ship['to'
         : byClaude
           ? 'Drafted by Claude'
           : 'Your post'
+  cancelPostedTimer()
   await update($, ship, (s): Ship => ({ status: 'ready', kind: byClaude && !to ? 'session' : 'typed', source, draft: text.slice(0, POST_MAX), round: s.round + 1, ...(to ? { to } : {}) }))
 }
 
@@ -130,13 +134,40 @@ export async function offerFromPrompt($: EngineInterface, text: string): Promise
 }
 
 async function dismiss($: EngineInterface): Promise<void> {
-  postedTimer?.cancel()
-  postedTimer = undefined
+  cancelPostedTimer()
   postedUrl = undefined
   await update($, ship, (s): Ship => ({ status: 'idle', round: s.round + 1 }))
 }
 
+const cancelPostedTimer = () => {
+  postedTimer?.cancel()
+  postedTimer = undefined
+}
+
+// The "Posted" note clears itself after a while, unless a newer draft has taken the band by then.
+function clearPostedLater($: EngineInterface): void {
+  cancelPostedTimer()
+  postedTimer = $.clock.after(POSTED_MS, () => {
+    void (async () => {
+      if ((await read($, ship)).status === 'posted') await dismiss($)
+    })()
+  })
+}
+
+// Set from the press until the post settles: a second press meanwhile does nothing.
+let isPosting = false
+
 async function post($: EngineInterface): Promise<void> {
+  if (isPosting) return
+  isPosting = true
+  try {
+    await postOnce($)
+  } finally {
+    isPosting = false
+  }
+}
+
+async function postOnce($: EngineInterface): Promise<void> {
   const now = await read($, ship)
   if (now.status !== 'ready' || !now.draft) return
   const body = now.draft
@@ -151,8 +182,7 @@ async function post($: EngineInterface): Promise<void> {
     postedUrl = undefined
     await update($, ship, (s): Ship => ({ status: 'posted', kind: s.kind, source: s.source, to, round: s.round + 1 }))
     $.ui.toast(`/dev/null: ${said.replace(/\.$/, '').toLowerCase()}`)
-    postedTimer?.cancel()
-    postedTimer = $.clock.after(POSTED_MS, () => void dismiss($))
+    clearPostedLater($)
     return
   }
   try {
@@ -167,8 +197,7 @@ async function post($: EngineInterface): Promise<void> {
     if (to?.mode === 'reply') await noteReply($, to.id).catch(() => {})
     $.ui.toast(to?.mode === 'reply' ? '/dev/null: replied' : to?.mode === 'quote' ? '/dev/null: quoted' : '/dev/null: posted')
     $.audio.play({ asset: 'assets/shipped.wav' }).catch(() => {})
-    postedTimer?.cancel()
-    postedTimer = $.clock.after(POSTED_MS, () => void dismiss($))
+    clearPostedLater($)
     void refresh($).catch(() => {})
   } catch (error) {
     await update($, ship, (s): Ship => ({ ...s, status: 'failed', draft: body, error: (error as Error).message }))
@@ -208,7 +237,8 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const s = await read($, ship)
-    if (s.status === 'idle') return next(e)
+    // A survey takes the band while it asks; nothing else needs drawing then.
+    if (s.status === 'idle' || e.props.hasSurvey) return next(e)
     const { Box, Text, Button, Link } = $.ui.resolve(e)
     const source = s.source ? s.source.slice(0, 80) : ''
     const question = s.to ? `${source}?` : s.kind === 'ship' ? 'Ship it to /dev/null?' : 'Post this to /dev/null?'
@@ -225,6 +255,7 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
         <Box flexDirection="row" columnGap={2}>
           <Text>{s.to?.mode === 'remote' ? 'Pushed' : 'Posted to /dev/null'}</Text>
           {postedUrl ? <Link href={postedUrl} label="View" /> : null}
+          {dismissButton}
         </Box>
       )
     } else if (s.status === 'failed') {
@@ -257,9 +288,14 @@ export function registerShip(on: On, options: Readonly<Record<string, unknown>>)
       )
     }
 
+    // What other mods draw in the band stays, under this one; no width here, so theirs lays out as it would.
+    const below = await next(e)
     return (
-      <Box key={`ship-${s.round}`} flexDirection="column" width={e.props.bodyColumns} paddingX={1}>
-        {body}
+      <Box key={`ship-${s.round}`} flexDirection="column">
+        <Box flexDirection="column" paddingX={1}>
+          {body}
+        </Box>
+        {below}
       </Box>
     )
   })
