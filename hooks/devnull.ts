@@ -348,3 +348,37 @@ export const clientId = (): string => {
   const h = hex(b)
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }
+
+// Loaders, drawn as small animated SVGs (SMIL, which the desktop runs when the Svg is interactive).
+// The pulse and sweep are slow and quiet, like the web's own skeletons.
+const PULSE = '<animate attributeName="opacity" values="0.35;0.75;0.35" dur="1.4s" repeatCount="indefinite"/>'
+
+// A placeholder for one row while its list loads: an avatar and three lines of text.
+export const skeletonSvg = (width = 480, avatar = 40): { source: string; width: number; height: number } => {
+  const x = avatar + 16
+  const w = Math.max(80, width - x)
+  const bar = (y: number, frac: number, h = 10) => `<rect x="${x}" y="${y}" width="${Math.round(w * frac)}" height="${h}" rx="${h / 2}" fill="#3a3a3e"/>`
+  const height = Math.max(avatar, 62)
+  return {
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><g>${PULSE}<circle cx="${avatar / 2}" cy="${avatar / 2}" r="${avatar / 2}" fill="#3a3a3e"/>${bar(4, 0.35, 12)}${bar(26, 0.9)}${bar(44, 0.6)}</g></svg>`,
+    width,
+    height,
+  }
+}
+
+// A thin bar sweeping across the top while a list refreshes over what's already shown.
+export const progressSvg = (width: number, color: string): { source: string; width: number; height: number } => {
+  const seg = Math.round(width * 0.3)
+  return {
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="2" viewBox="0 0 ${width} 2"><rect width="${width}" height="2" fill="${color}" fill-opacity="0.15"/><rect x="${-seg}" width="${seg}" height="2" rx="1" fill="${color}"><animate attributeName="x" from="${-seg}" to="${width}" dur="1.1s" repeatCount="indefinite"/></rect></svg>`,
+    width,
+    height: 2,
+  }
+}
+
+// A small spinning arc beside a button's label.
+export const spinnerSvg = (size: number, color: string): string => {
+  const c = size / 2
+  const r = c - 2
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-opacity="0.2" stroke-width="2"/><path d="M${c} ${c - r} A${r} ${r} 0 0 1 ${c + r} ${c}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 ${c} ${c}" to="360 ${c} ${c}" dur="0.8s" repeatCount="indefinite"/></path></svg>`
+}

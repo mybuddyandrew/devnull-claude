@@ -1,5 +1,5 @@
 // The mod's shared state and look: one place for the atoms every feature reads.
-import type { Compose, Feed, Inbox, Live, Login, Profile, Ship, Stats, Tab, Thread } from '../types'
+import type { CommitRow, Compose, Feed, Inbox, Live, Login, Profile, Ship, Stats, NoteRow, Tab, Thread } from '../types'
 
 export const PANE = 'devnull'
 export const TABS: Tab[] = ['following', 'latest', 'trending', 'notifications', 'remotes']
@@ -47,3 +47,4 @@ export const INITIAL_THREAD = null as Thread | null
 export const THREAD_POLL_MS = 3000
 // dev-null.sh takes messages up to 2000 characters, 30 a minute.
 export const MESSAGE_MAX = 2000
+export const INITIAL_TAB_CACHE = {} as Record<string, { commits: CommitRow[]; notifications: NoteRow[]; nextCursor?: string }>

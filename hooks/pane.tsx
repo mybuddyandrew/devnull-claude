@@ -3,7 +3,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderInput } from 'claude-code'
 
 import type { CommitRow, ConversationRow, InboxSection, Live, MessageRow } from '../types'
-import { MENTION_HREF, NOTE_KINDS, pictureSvg, TAIL_HEIGHT, ago, avatarSvg, handleFromHref, linkMentions, mentionsIn, preview, tailSvg, underlineSvg } from './devnull'
+import { MENTION_HREF, NOTE_KINDS, pictureSvg, progressSvg, skeletonSvg, spinnerSvg, TAIL_HEIGHT, ago, avatarSvg, handleFromHref, linkMentions, mentionsIn, preview, tailSvg, underlineSvg } from './devnull'
 import { aim, react, refresh, show, startInPrompt } from './feed'
 import { startLogin, syncLogin } from './login'
 import { closeProfile, openProfile, toggleFollow } from './profile'
@@ -84,6 +84,36 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
     const box = await read($, inbox)
     const chat = await read($, thread)
     const myId = (await $.store.get('userId').catch(() => undefined)) as string | undefined
+
+    // Loaders: skeleton rows the first time a list loads, a sweeping bar while one refreshes over what's
+    // shown, and a spinner beside a button. Text stands in where a surface draws no SVG.
+    const loaderWidth = Math.min(640, Math.max(240, ((e.props as { bodyColumns?: number }).bodyColumns ?? 60) * 8))
+    const skeletons = (n: number, avatar = 40) =>
+      Svg
+        ? Array.from({ length: n }, (_, i) => {
+            const sk = skeletonSvg(loaderWidth, avatar)
+            return (
+              <Box key={`sk-${i}`} paddingY={1}>
+                <Svg source={sk.source} alt="Loading" width={sk.width} height={sk.height} isInteractive />
+              </Box>
+            )
+          })
+        : [<Text key="sk-text" color={MUTED}>Loading…</Text>]
+    const progressBar = (key: string) => {
+      if (!Svg) return null
+      const bar = progressSvg(loaderWidth, PRIMARY)
+      return (
+        <Box key={key} paddingBottom={1}>
+          <Svg source={bar.source} alt="Refreshing" width={bar.width} height={bar.height} isInteractive />
+        </Box>
+      )
+    }
+    const busy = (key: string, label: string) => (
+      <Box key={key} flexDirection="row" alignItems="center" columnGap={1}>
+        {Svg && <Svg source={spinnerSvg(14, MUTED)} alt="Loading" width={14} height={14} isInteractive />}
+        <Text color={MUTED}>{label}</Text>
+      </Box>
+    )
     const me = await read($, stats)
     const now = Date.now()
 
@@ -110,7 +140,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             </Box>
           ))}
         </Box>
-        <Button key="refresh" plain dimColor label={f.isLoading ? 'Loading…' : '↻ Refresh'} onPress={() => refreshToTop($)} />
+        {(showing === 'remotes' ? box.isLoading : f.isLoading && !f.isLoadingMore) ? busy('refreshing', 'Refreshing') : <Button key="refresh" plain dimColor label="↻ Refresh" onPress={() => refreshToTop($)} />}
       </Box>
     )
 
@@ -445,7 +475,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
                 </Text>
               </Box>
             </Box>
-            {chat.status === 'loading' && <Text color={MUTED}>Loading…</Text>}
+            {chat.status === 'loading' && skeletons(3, 32)}
             {chat.status === 'failed' && <Text color={DANGER}>Couldn't open this remote: {chat.error}</Text>}
             {chat.hasOlder && chat.messages.length > 0 && <Text size="footnote" color={MUTED}>Older messages are on dev-null.sh.</Text>}
             {shown.map(m => bubble(m, m.id === lastMine))}
@@ -490,14 +520,15 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
             ))}
           </Box>
           {box.error && <Text color={DANGER}>{box.error}</Text>}
-          {box.isLoading && box.rows.length === 0 && <Text color={MUTED}>Loading…</Text>}
+          {box.isLoading && box.rows.length === 0 && skeletons(4, 36)}
+          {box.isLoading && box.rows.length > 0 && progressBar('inbox-progress')}
           {!box.isLoading && !box.error && box.rows.length === 0 && (
             <Text color={MUTED}>{box.section === 'stashed' ? 'Nothing stashed.' : box.section === 'fetched' ? 'No requests.' : 'No remotes yet. Open someone’s profile to start one.'}</Text>
           )}
           {box.rows.slice(0, 30).map(inboxRow)}
           {box.hasMore && (
             <Box flexDirection="row" justifyContent="center" paddingY={1}>
-              <Button key="rm-more" label={box.isLoading ? 'Loading…' : 'Load more'} onPress={() => loadInbox($, undefined, true)} />
+              {box.isLoading ? busy('rm-loading', 'Loading more') : <Button key="rm-more" label="Load more" onPress={() => loadInbox($, undefined, true)} />}
             </Box>
           )}
         </Box>
@@ -522,7 +553,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
               />
             )}
           </Box>
-          {person.status === 'loading' && <Text color={MUTED}>Loading @{person.username}…</Text>}
+          {person.status === 'loading' && skeletons(1, 64)}
+          {person.status === 'loading' && skeletons(3, 44)}
           {person.status === 'failed' && <Text color={DANGER}>Couldn't load @{person.username}: {person.error}</Text>}
           {v && (
             <Box flexDirection="column" rowGap={1} paddingBottom={1}>
@@ -612,6 +644,8 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
           </Box>
         )}
         {f.error && <Text color={DANGER}>Couldn't load: {f.error}</Text>}
+        {f.isLoading && !f.isLoadingMore && !isEmpty && progressBar('feed-progress')}
+        {f.isLoading && isEmpty && skeletons(showing === 'notifications' ? 6 : 4, showing === 'notifications' ? 36 : 44)}
         {isEmpty && !f.isLoading && !f.error && (
           <Text color={MUTED}>
             {showing === 'notifications' ? 'No notifications yet.' : showing === 'following' ? 'Nobody you follow has committed yet. Try Latest.' : 'Nothing here yet.'}
@@ -625,7 +659,7 @@ export async function drawPane($: EngineInterface, e: RenderInput) {
         {showing === 'notifications' ? (drawn as typeof f.notifications).map(note) : (drawn as CommitRow[]).map(c => commit(c, 0))}
         {(start + MAX_DRAWN < rows.length || f.nextCursor) && !isEmpty && (
           <Box flexDirection="row" justifyContent="center" paddingY={1}>
-            {f.isLoading ? <Text color={MUTED}>Loading more…</Text> : <Button key="more" label="Load more" onPress={() => slide($, 1)} />}
+            {f.isLoadingMore ? busy('loading-more', 'Loading more') : <Button key="more" label="Load more" onPress={() => slide($, 1)} />}
           </Box>
         )}
       </Box>

@@ -12,6 +12,7 @@ import {
   INITIAL_COMPOSE,
   INITIAL_FEED,
   INITIAL_TAB,
+  INITIAL_TAB_CACHE,
   INITIAL_WINDOW_START,
   MAX_LOADED,
 } from './state'
@@ -21,6 +22,7 @@ const compose = atom({ plugin: 'devnull', key: 'compose' } as const, INITIAL_COM
 const feed = atom({ plugin: 'devnull', key: 'feed' } as const, INITIAL_FEED)
 const tab = atom({ plugin: 'devnull', key: 'tab' } as const, INITIAL_TAB)
 const windowStart = atom({ plugin: 'devnull', key: 'windowStart' } as const, INITIAL_WINDOW_START)
+const tabCache = atom({ plugin: 'devnull', key: 'tabCache' } as const, INITIAL_TAB_CACHE)
 
 export async function refresh($: EngineInterface, more = false): Promise<void> {
   const showing = await read($, tab)
@@ -30,18 +32,18 @@ export async function refresh($: EngineInterface, more = false): Promise<void> {
   const cursor = more ? (await read($, feed)).nextCursor : undefined
   // A fresh load starts drawing from the top again.
   if (!more) await update($, windowStart, () => 0)
-  await update($, feed, f => ({ ...f, isLoading: true, error: undefined }))
+  await update($, feed, f => ({ ...f, isLoading: true, isLoadingMore: more, error: undefined }))
   try {
     if (showing === 'notifications') {
       // Listing notifications marks them read on dev-null.sh, as the web does.
       const json = await api($, 'GET', 'notifications', { cursor })
       const rows = dataList(json).map(toNoteRow)
-      await update($, feed, f => ({ ...f, isLoading: false, notifications: more ? [...f.notifications, ...rows].slice(0, MAX_LOADED) : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
+      await update($, feed, f => ({ ...f, isLoading: false, isLoadingMore: false, notifications: more ? [...f.notifications, ...rows].slice(0, MAX_LOADED) : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
       void loadAvatars($, rows.map(r => [r.actor, r.avatarUrl]))
     } else {
       const json = await api($, 'GET', `log/${showing}`, { cursor })
       const rows = dataList(json).map(toCommitRow)
-      await update($, feed, f => ({ ...f, isLoading: false, commits: more ? [...f.commits, ...rows].slice(0, MAX_LOADED) : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
+      await update($, feed, f => ({ ...f, isLoading: false, isLoadingMore: false, commits: more ? [...f.commits, ...rows].slice(0, MAX_LOADED) : rows, nextCursor: nextCursorOf(json), fetchedAt: Date.now() }))
       const people = rows.flatMap(r => [r, ...r.replyPreview, ...(r.quoted ? [r.quoted] : [])])
       void loadAvatars($, people.map(r => [r.username, r.avatarUrl]))
       // The first image of each commit, small, for drawing inline.
@@ -50,13 +52,21 @@ export async function refresh($: EngineInterface, more = false): Promise<void> {
       void rememberPeople($, people.map(r => r.username)).catch(() => {})
     }
   } catch (error) {
-    await update($, feed, f => ({ ...f, isLoading: false, error: String((error as Error).message ?? error) }))
+    await update($, feed, f => ({ ...f, isLoading: false, isLoadingMore: false, error: String((error as Error).message ?? error) }))
   }
 }
 
+// Switches tab: the list you're leaving is kept, and the one you're going to shows at once from what was
+// kept (if anything) while it refreshes, so a switch never flashes an empty pane.
 export async function show($: EngineInterface, next: Tab): Promise<void> {
+  const leaving = await read($, tab)
+  const now = await read($, feed)
+  if (leaving !== 'remotes') {
+    await update($, tabCache, c => ({ ...c, [leaving]: { commits: now.commits.slice(0, 60), notifications: now.notifications.slice(0, 60), ...(now.nextCursor ? { nextCursor: now.nextCursor } : {}) } }))
+  }
+  const kept = (await read($, tabCache))[next]
   await update($, tab, () => next)
-  await update($, feed, f => ({ ...f, commits: [], notifications: [], nextCursor: undefined }))
+  await update($, feed, f => ({ ...f, error: undefined, commits: kept?.commits ?? [], notifications: kept?.notifications ?? [], nextCursor: kept?.nextCursor }))
   await refresh($)
 }
 
