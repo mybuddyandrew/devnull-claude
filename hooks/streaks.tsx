@@ -3,7 +3,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { Live, Stats } from '../types'
-import { api } from './core'
+import { num, obj } from './json'
+import { api } from './api'
 import { loadInbox, remotesOf } from './remotes'
 import { INITIAL_FEED, INITIAL_LIVE, INITIAL_STATS, INITIAL_TAB } from './state'
 
@@ -17,9 +18,6 @@ const tab = atom({ plugin: 'devnull', key: 'tab' } as const, INITIAL_TAB)
 const TICK_MS = 60_000
 const STATS_MAX_AGE_MS = 10 * 60_000
 
-type Json = Record<string, unknown>
-const obj = (v: unknown): Json => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {})
-const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 
 // GET users/{me} signed: the profile with its streaks, achievements and activity buckets.
 export const toStats = (username: string, json: unknown, nowMs: number): Stats => {

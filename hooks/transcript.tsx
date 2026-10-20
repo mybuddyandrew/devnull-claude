@@ -4,8 +4,12 @@ import type { EngineInterface, On } from 'claude-code'
 
 import type { CommitRow } from '../types'
 import { searchEmoji } from './emoji'
-import { api, loadAvatars, nextCursorOf } from './core'
-import { ago, avatarSvg, dataList, toCommitRow, untrusted } from './devnull'
+import { api, nextCursorOf } from './api'
+import { loadAvatars } from './images'
+import { dataList } from './json'
+import { toCommitRow } from './rows'
+import { avatarSvg } from './svg'
+import { ago, untrusted } from './text'
 import { AVATAR_MAX_CHARS, HAIRLINE, INITIAL_AVATARS, INITIAL_FEED, INITIAL_PEOPLE, MUTED, STAR } from './state'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.

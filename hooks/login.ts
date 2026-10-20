@@ -3,8 +3,8 @@ import { atom, update } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 
 import type { Login } from '../types'
-import { api, ensureHandler, ensureKey, paths, run } from './core'
-import { authorizeUrl, base64Url, challenge, fingerprintOf, parseCallback, randomBytes } from './devnull'
+import { api, ensureHandler, ensureKey, paths, run } from './api'
+import { authorizeUrl, base64Url, challenge, fingerprintOf, parseCallback, randomBytes } from './sign'
 import { show } from './feed'
 import {
   BIN,

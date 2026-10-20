@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { Ship } from '../types'
-import { mentionsIn } from './devnull'
+import { mentionsIn } from './text'
 import { aim, draftInComposer, noteReply, postCommit, refresh } from './feed'
 import { sendMessage } from './remotes'
 import { BIN, DANGER, INITIAL_SHIP, MUTED } from './state'

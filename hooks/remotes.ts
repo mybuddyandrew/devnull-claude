@@ -5,9 +5,12 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 
 import type { ConversationRow, Inbox, InboxSection, Live, MessageRow, Thread } from '../types'
-import { api, loadAvatars } from './core'
-import { clientId, threadPath, toConversationRow, toMessageRow } from './devnull'
+import { count, list, obj } from './json'
+import { api, threadPath } from './api'
+import { loadAvatars } from './images'
+import { toConversationRow, toMessageRow } from './rows'
 import { emojify } from './emoji'
+import { hex, randomBytes } from './sign'
 import { INITIAL_INBOX, INITIAL_LIVE, INITIAL_THREAD, MESSAGE_MAX, THREAD_POLL_MS } from './state'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
@@ -15,10 +18,6 @@ const inbox = atom({ plugin: 'devnull', key: 'inbox' } as const, INITIAL_INBOX)
 const thread = atom({ plugin: 'devnull', key: 'thread' } as const, INITIAL_THREAD)
 const live = atom({ plugin: 'devnull', key: 'live' } as const, INITIAL_LIVE)
 
-type Json = Record<string, unknown>
-const obj = (v: unknown): Json => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {})
-const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
-const rows = (v: unknown): Json[] => (Array.isArray(v) ? v.map(obj) : [])
 
 // The open thread's poll; a hot reload drops it, and the next draw of an open thread starts it again.
 let poller: Timer | undefined
@@ -46,7 +45,7 @@ export const remotesOf = (me: unknown): { on: boolean; unread: number } => {
   const root = obj(me)
   const r = 'remotes' in root ? root.remotes : obj(root.data).remotes
   if (r === undefined || r === null) return { on: false, unread: 0 }
-  return { on: true, unread: num(obj(r).unread_count) }
+  return { on: true, unread: count(obj(r).unread_count) }
 }
 
 // quiet: a background recheck (the minute tick), which shows no loader and writes only when something changed,
@@ -59,7 +58,7 @@ export async function loadInbox($: EngineInterface, section?: InboxSection, more
   try {
     const me = await myUserId($)
     const json = obj(await api($, 'GET', 'remotes', { tab, before }))
-    const found = rows(json.data).map(c => toConversationRow(c, me))
+    const found = list(json.data).map(c => toConversationRow(c, me))
     const current = await read($, inbox)
     const next: Inbox = {
       ...current,
@@ -67,12 +66,12 @@ export async function loadInbox($: EngineInterface, section?: InboxSection, more
       isLoading: false,
       rows: more ? [...current.rows, ...found] : found,
       hasMore: json.has_more === true,
-      unread: num(json.unread_count),
-      requests: num(json.requests_count),
+      unread: count(json.unread_count),
+      requests: count(json.requests_count),
     }
     if (JSON.stringify(next) !== JSON.stringify(current)) await update($, inbox, (): Inbox => next)
     const l = await read($, live)
-    if (l.remotesOn !== true || l.remotesUnread !== num(json.unread_count)) await update($, live, (x): Live => ({ ...x, remotesOn: true, remotesUnread: num(json.unread_count) }))
+    if (l.remotesOn !== true || l.remotesUnread !== count(json.unread_count)) await update($, live, (x): Live => ({ ...x, remotesOn: true, remotesUnread: count(json.unread_count) }))
     void loadAvatars($, found.map((r): [string, string | undefined] => [r.avatarUser ?? r.title, r.avatarUrl]))
   } catch (error) {
     if (isNotFound(error)) await update($, live, (l): Live => ({ ...l, remotesOn: false }))
@@ -88,13 +87,13 @@ async function threadFields($: EngineInterface, json: unknown): Promise<Partial<
   const typing = Array.isArray(t.typing) ? (t.typing as unknown[]).map(String) : t.partner_typing === true && typeof partner.username === 'string' ? [partner.username] : []
   const access = t.access
   return {
-    messages: rows(t.messages).map(m => toMessageRow(m, me)),
+    messages: list(t.messages).map(m => toMessageRow(m, me)),
     hasOlder: t.has_older === true,
     access: access === 'request' || access === 'waiting' || access === 'restricted' || access === 'closed' ? access : 'open',
     typing,
-    readThrough: num(t.read_through_id),
-    partnerReadThrough: num(t.partner_read_through_id),
-    reactionsVersion: num(t.reactions_version),
+    readThrough: count(t.read_through_id),
+    partnerReadThrough: count(t.partner_read_through_id),
+    reactionsVersion: count(t.reactions_version),
     isArchived: t.is_archived === true,
   }
 }
@@ -151,7 +150,7 @@ export async function pollThread($: EngineInterface): Promise<void> {
   try {
     const json = await api($, 'GET', `${threadPath(t.isOrg, t.target)}/messages`, { after: String(last), reactions_after: String(t.reactionsVersion) })
     const fields = await threadFields($, json)
-    const changes = rows(obj(obj(json).data).reaction_changes)
+    const changes = list(obj(obj(json).data).reaction_changes)
     // Worked out first and written only when something changed: this runs every few seconds.
     const merge = (now: Thread | null): Thread | null => {
       if (!now || now.target !== t.target) return now
@@ -161,8 +160,8 @@ export async function pollThread($: EngineInterface): Promise<void> {
       const sentIds = new Set(fresh.map(m => m.clientId).filter(Boolean))
       let messages = [...now.messages.filter(m => !(m.id === 0 && m.clientId && sentIds.has(m.clientId))), ...fresh]
       for (const change of changes) {
-        const id = num(change.id)
-        const reactions = rows(change.reactions).map(r => ({ userId: String(r.user_id ?? ''), emoji: String(r.emoji ?? '') }))
+        const id = count(change.id)
+        const reactions = list(change.reactions).map(r => ({ userId: String(r.user_id ?? ''), emoji: String(r.emoji ?? '') }))
         messages = messages.map(m => (m.id === id ? { ...m, reactions } : m))
       }
       return {
@@ -247,7 +246,7 @@ export async function toggleReaction($: EngineInterface, messageId: number, emoj
   await set(optimistic)
   try {
     const json = obj(await api($, isOn ? 'DELETE' : 'POST', `remotes/messages/${messageId}/reactions`, {}, { emoji }))
-    await set(rows(json.reactions).map(r => ({ userId: String(r.user_id ?? ''), emoji: String(r.emoji ?? '') })))
+    await set(list(json.reactions).map(r => ({ userId: String(r.user_id ?? ''), emoji: String(r.emoji ?? '') })))
   } catch (error) {
     await set(m.reactions)
     $.ui.toast(`/dev/null: ${reason(error)}`)
@@ -314,4 +313,13 @@ export async function checkRemotes($: EngineInterface): Promise<void> {
     const l = await read($, live)
     if (l.remotesOn !== r.on || l.remotesUnread !== r.unread) await update($, live, (x): Live => ({ ...x, remotesOn: r.on, remotesUnread: r.unread }))
   } catch {}
+}
+
+// A fresh client id for a message, so a retry is never sent twice.
+function clientId(): string {
+  const b = randomBytes(16)
+  b[6] = (b[6]! & 0x0f) | 0x40
+  b[8] = (b[8]! & 0x3f) | 0x80
+  const h = hex(b)
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }

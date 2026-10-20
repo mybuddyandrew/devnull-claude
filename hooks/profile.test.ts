@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { MENTION_HREF, handleFromHref, linkMentions, mentionsIn } from './devnull'
+import { handleFromHref, linkMentions, MENTION_HREF, mentionsIn } from './text'
 import { toProfileView } from './profile'
 
 const NOW = Date.parse('2026-10-19T19:00:00Z')

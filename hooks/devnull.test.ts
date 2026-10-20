@@ -2,7 +2,10 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { FOLLOWING } from './fixture'
 
-import { authorizeUrl, avatarSvg, isHandle, laneColor, parseCallback, patchCommit, pictureSvg, preview, progressSvg, query, RAIL, signingMessage, skeletonSvg, spinnerSvg, safeImageUrl, target, toCommitRow, toNoteRow, unarmor, untrusted } from './devnull'
+import { laneColor, patchCommit, RAIL, toCommitRow, toNoteRow } from './rows'
+import { authorizeUrl, parseCallback, query, signingMessage, target, unarmor } from './sign'
+import { avatarSvg, pictureSvg, progressSvg, skeletonSvg, spinnerSvg } from './svg'
+import { isHandle, preview, safeImageUrl, untrusted } from './text'
 
 const PANE = {
   component: 'Pane',
