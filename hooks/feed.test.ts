@@ -174,3 +174,16 @@ test('signing out forgets the account; the next sign-in neither shows its list n
   await settle()
   await ui.unmount()
 })
+
+test('after /clear, /resume or a fork the pane still knows you are signed in and shows your log', async ($, on) => {
+  server(on, f => (f.path === '/api/v1/log/following' ? { body: { data: [commit(1)], meta: {} } } : { body: { data: { id: 'u1' } } }))
+  // /clear resets the session's state to its defaults and starts no session.start: only this event comes.
+  for (const source of ['clear', 'resume', 'fork'] as const) {
+    await $.classic.SessionStart({ source })
+    await settle()
+    const ui = await $.ui.mount({ plugin: 'devnull', surface: 'desktop', ...PANE })
+    expect(await ui.find({ key: 'sign-in' })).toBeUndefined()
+    expect(await ui.find({ key: `star-0-${ID(1)}` })).toBeDefined()
+    await ui.unmount()
+  }
+})
