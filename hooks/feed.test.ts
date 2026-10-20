@@ -128,6 +128,13 @@ test('pull to refresh fires once, then waits for that refresh to finish', async 
   expect(pullStep({ ticks: 3, lastAt: 0 }, 10_000, false)).toEqual({ ticks: 1, fire: false })
 })
 
+test('a fast pull counts by how far it moved: wheel ticks summed into one scroll still refresh', async () => {
+  // The desktop sums the wheel ticks that arrive while a scroll is being handled into one move: by -3, then -2.
+  const first = pullStep({ ticks: 0, lastAt: 0 }, 5_000, false, -3)
+  expect(first).toEqual({ ticks: 3, fire: false })
+  expect(pullStep({ ticks: first.ticks, lastAt: 5_000 }, 5_100, false, -2).fire).toBe(true)
+})
+
 test('a star pressed on a profile shows there', async ($, on) => {
   server(on, f => {
     if (f.path === '/api/v1/users/user1') return { body: { data: { username: 'user1', name: 'User 1' } } }

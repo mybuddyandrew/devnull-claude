@@ -29,7 +29,7 @@ export function registerScroll(on: On): void {
       return moved
     }
     if (e.by < 0 && e.offset === 0) {
-      const step = pullStep({ ticks: await read($, pull), lastAt: lastPullAt }, now, isPulling)
+      const step = pullStep({ ticks: await read($, pull), lastAt: lastPullAt }, now, isPulling, e.by)
       lastPullAt = now
       if (step.fire) {
         isPulling = true
@@ -67,10 +67,11 @@ let lastPullAt = 0
 // Set while a pull's refresh runs: the wheel ticks that follow (inertia) start no other.
 let isPulling = false
 
-// One wheel tick up at the top: how many in a row it makes, and whether that is enough to refresh.
-export const pullStep = (prev: { ticks: number; lastAt: number }, now: number, pulling: boolean): { ticks: number; fire: boolean } => {
+// A scroll up at the top: how far the pull has gone, and whether that is enough to refresh. It counts the rows
+// moved, not the scrolls: the desktop sums the wheel ticks that arrive while one is handled into a single move.
+export const pullStep = (prev: { ticks: number; lastAt: number }, now: number, pulling: boolean, by = -1): { ticks: number; fire: boolean } => {
   if (pulling) return { ticks: prev.ticks, fire: false }
-  const ticks = now - prev.lastAt > PULL_WINDOW_MS ? 1 : prev.ticks + 1
+  const ticks = (now - prev.lastAt > PULL_WINDOW_MS ? 0 : prev.ticks) + Math.max(1, Math.abs(by))
   return ticks >= PULL_TICKS ? { ticks: PULL_TICKS, fire: true } : { ticks, fire: false }
 }
 
