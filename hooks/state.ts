@@ -45,7 +45,9 @@ export const INITIAL_INBOX = { section: 'open', rows: [], isLoading: false, hasM
 export const INITIAL_THREAD = null as Thread | null
 // Remotes polls as the phone app does: an open thread every few seconds, faster right after activity.
 export const THREAD_POLL_MS = 3000
-// dev-null.sh takes messages up to 2000 characters, 30 a minute.
+// dev-null.sh takes posts of 3 to 4000 characters, 10 a minute, and messages up to 2000 characters, 30 a minute.
+export const POST_MIN = 3
+export const POST_MAX = 4000
 export const MESSAGE_MAX = 2000
 export const INITIAL_OPEN_REPLIES = {} as Record<string, { status: 'loading' | 'ready' | 'failed'; replies: CommitRow[]; error?: string }>
 // An open thread draws at most this many replies inline; the rest are a link away.

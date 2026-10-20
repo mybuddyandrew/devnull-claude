@@ -129,3 +129,10 @@ export async function noteReply($: EngineInterface, parentId: string): Promise<v
   await update($, feed, f => ({ ...f, commits: patchCommit(f.commits, parentId, r => ({ ...r, replies: r.replies + 1 })) }))
   await reloadReplies($, parentId)
 }
+
+// Starts a post in Claude's prompt box from a press in the pane. No mods API can focus the prompt box, and
+// closing the pane doesn't hand it focus on the desktop either, so the person clicks it to type.
+export async function composeInPrompt($: EngineInterface, mode: Compose['mode'] = 'new', row?: CommitRow): Promise<void> {
+  if (mode === 'new') await startInPrompt($)
+  else await aim($, mode, row)
+}

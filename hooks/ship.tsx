@@ -9,7 +9,7 @@ import { postCommit } from './commits'
 import { emojify } from './emoji'
 import { aim, draftInComposer, noteReply, refresh } from './feed'
 import { sendMessage } from './remotes'
-import { BIN, DANGER, INITIAL_COMPOSE, INITIAL_SHIP, MUTED } from './state'
+import { BIN, DANGER, INITIAL_COMPOSE, INITIAL_SHIP, MUTED, POST_MAX, POST_MIN } from './state'
 import { mentionsIn } from './text'
 
 // $.state atoms are declared in each file that reads or writes them, as the engine's scan requires.
@@ -17,7 +17,6 @@ const ship = atom({ plugin: 'devnull', key: 'ship' } as const, INITIAL_SHIP)
 const compose = atom({ plugin: 'devnull', key: 'compose' } as const, INITIAL_COMPOSE)
 
 const POSTED_MS = 8000
-const MAX_CHARS = 4000
 
 const STYLE = 'Plain text, first person, casual dev voice, under 280 characters unless asked for more, no hashtags, no emojis unless natural, no hype, no quotes around it. Never include anything from /dev/null Remotes (private messages). Reply with the post text only.'
 const SHIPPED_ASK = `Write ONE post for /dev/null, a small social network for developers, about what I just shipped and why, based on this session. ${STYLE}`
@@ -31,7 +30,7 @@ function clean(text: string): string {
   let t = text.trim()
   const pairs: [string, string][] = [['"', '"'], ["'", "'"], ['`', '`'], ['“', '”']]
   for (const [a, b] of pairs) if (t.length > 1 && t.startsWith(a) && t.endsWith(b)) t = t.slice(1, -1).trim()
-  return t.slice(0, MAX_CHARS)
+  return t.slice(0, POST_MAX)
 }
 
 // Pulls the shipped thing out of a finished Bash call, or undefined when it shipped nothing.
@@ -113,7 +112,7 @@ export async function offerPost($: EngineInterface, text: string, to?: Ship['to'
         : byClaude
           ? 'Drafted by Claude'
           : 'Your post'
-  await update($, ship, (s): Ship => ({ status: 'ready', kind: byClaude && !to ? 'session' : 'typed', source, draft: text.slice(0, MAX_CHARS), round: s.round + 1, ...(to ? { to } : {}) }))
+  await update($, ship, (s): Ship => ({ status: 'ready', kind: byClaude && !to ? 'session' : 'typed', source, draft: text.slice(0, POST_MAX), round: s.round + 1, ...(to ? { to } : {}) }))
 }
 
 // /devnull post <text>: offers what was typed in the main prompt box in the band above the prompt, aimed at
@@ -122,8 +121,8 @@ export async function offerFromPrompt($: EngineInterface, text: string): Promise
   if (!(await $.store.get('username'))) return 'Not signed in to /dev/null. Run /devnull login first.'
   // :rocket: → 🚀, as GitHub writes shortcodes.
   const body = emojify(text.trim())
-  if (body.length < 3) return 'Nothing to post: write at least 3 characters after /devnull post.'
-  if (body.length > 4000) return `Not posted: /dev/null takes up to 4000 characters and this is ${body.length}.`
+  if (body.length < POST_MIN) return `Nothing to post: write at least ${POST_MIN} characters after /devnull post.`
+  if (body.length > POST_MAX) return `Not posted: /dev/null takes up to ${POST_MAX} characters and this is ${body.length}.`
   const c = await read($, compose)
   const to = c.mode !== 'new' && c.targetId ? { mode: c.mode, id: c.targetId, ...(c.targetHandle ? { handle: c.targetHandle } : {}) } : undefined
   await offerPost($, body, to)
